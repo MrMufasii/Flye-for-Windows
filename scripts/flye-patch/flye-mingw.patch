@@ -209,3 +209,31 @@ index 7dce660..ee419d8 100644
  	if (inconsistentHangs > threshold)
  	{
  		Logger::get().debug() << "SuspiciousOverhangs: " << checkEdge->edgeId.signedId();
+diff --git a/src/sequence/alignment.cpp b/src/sequence/alignment.cpp
+index 2d842d1..1df1358 100644
+--- a/src/sequence/alignment.cpp
++++ b/src/sequence/alignment.cpp
+@@ -149,7 +149,7 @@ float getAlignmentCigarKsw(const DnaSequence& trgSeq, size_t trgBegin, size_t tr
+ 	for (;;)
+ 	{
+ 		memset(&ez, 0, sizeof(ksw_extz_t));
+-		ksw_extz2_sse(buf.memPool, qryByte.size(), &qryByte[0], 
++		ksw_extz2_sse(buf.memPool, qryByte.size(), &qryByte[0],
+ 					  trgByte.size(), &trgByte[0], NUM_NUCL,
+ 					  subsMat, gapOpen, gapExtend, bandWidth, Z_DROP, 
+ 					  END_BONUS, FLAG, &ez);
+@@ -172,6 +172,14 @@ float getAlignmentCigarKsw(const DnaSequence& trgSeq, size_t trgBegin, size_t tr
+ 		}
+ 
+ 		if (bandWidth > (int)std::max(qryByte.size(), trgByte.size())) break; //just in case
++		//Windows port: cap the band. Upstream doubles it until the alignment's
++		//deviation fits, which on divergent real reads can reach tens of thousands -
++		//far beyond anything minimap2 itself uses. ksw2's SSE kernel overruns its
++		//buffers at such bands (harmless slack single-threaded, but corrupts the heap
++		//once several threads' allocations are packed together -> STATUS_HEAP_CORRUPTION).
++		//A 4096 band already tolerates ~20% net indel over the <=20 kb stitch window.
++		const int MAX_BAND = 4096;
++		if (bandWidth >= MAX_BAND) break;
+ 		bandWidth *= 2;
+ 	}
+ 

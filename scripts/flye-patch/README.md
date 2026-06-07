@@ -21,10 +21,24 @@ On Windows (LLP64) `unsigned long` is **32-bit** while `size_t` is **64-bit**, s
 deduction fails. (On Linux/LP64 both are 64-bit, so it compiles there.) Fixed by
 making the literal a `size_t`: `std::max(..., (size_t)1)`. Two call sites.
 
-That is the *only* C++ source change. The core already guards its Unix-isms
-(`sysconf`/`getrusage`/`sysctl`) behind `#ifdef __unix__`, and `common/memory_info.h`
-already has a `_WIN32` branch, so no `fork()`, `mmap`, or `std::filesystem`
-problems to chase.
+The core already guards its Unix-isms (`sysconf`/`getrusage`/`sysctl`) behind
+`#ifdef __unix__`, and `common/memory_info.h` already has a `_WIN32` branch, so no
+`fork()`, `mmap`, or `std::filesystem` problems to chase.
+
+### Heap corruption on real-scale data: cap the alignment band — `src/sequence/alignment.cpp`
+This one only shows up on real reads, not the toy set. The consensus stitcher
+(`getAlignmentCigarKsw`) runs ksw2 and **doubles the band width until the alignment's
+deviation from the diagonal fits**. On the toy data (1.4 % divergence) the band stays
+tiny; on a real Nanopore run (~9 % overlap divergence) it climbs to tens of thousands —
+far beyond anything minimap2 itself ever uses — and ksw2's SSE kernel overruns its
+buffers at such bands. Single-threaded the overrun lands in slack and is survived; with
+several worker threads their allocations are packed together, so the overrun smashes a
+live heap header and the process dies with `STATUS_HEAP_CORRUPTION` (`0xC0000374`) right
+as the threads finish. Capping the band at **4096** (which still tolerates ~20 % net
+indel over the ≤20 kb stitch window) removes the pathological calls; the toy result is
+byte-identical (it never reached that band) and real genomes now assemble cleanly. This
+was the single hardest bug in the port — it's invisible until you run real data
+multi-threaded.
 
 ### `execinfo.h` shim  — `shim/execinfo.h`
 The crash handler (`common/utils.h`, `assemble/main_assemble.cpp`) uses glibc's

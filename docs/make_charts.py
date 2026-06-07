@@ -82,4 +82,63 @@ fig.tight_layout()
 fig.savefig(os.path.join(IMG, "summary.png"), dpi=150, bbox_inches="tight")
 plt.close(fig)
 
+# =====================================================================
+# Real Oxford Nanopore reads (ENA ERR14686362) vs E. coli K-12 MG1655
+# =====================================================================
+O = json.load(open(os.path.join(HERE, "ecoli_ont_metrics.json")))
+oa, oasm = O["accuracy_vs_reference"], O["assembly"]
+REFLEN = 4641652
+
+# --- ONT 1: genome reconstructed by a single contig (blocks colored by identity) ---
+fig, ax = plt.subplots(figsize=(9.0, 2.9))
+def idcolor(p):
+    if p >= 99.9: return "#16a34a"
+    if p >= 99.5: return TEAL
+    if p >= 99.0: return BLUE
+    return "#e0a82e"
+for blk in oa["main_contig_blocks"]:
+    s, e = (int(x) for x in blk["ref"].split("-"))
+    ax.add_patch(Rectangle((s, 0.45), e - s, 0.42, facecolor=idcolor(blk["identity_pct"]),
+                           edgecolor="white", zorder=3))
+    if e - s > 200000:
+        ax.text((s + e) / 2, 0.66, f"{blk['identity_pct']:.2f}%", ha="center", va="center",
+                color="white", fontsize=9, fontweight="bold")
+ax.add_patch(Rectangle((0, 0.13), REFLEN, 0.14, facecolor="#e7ecf3", edgecolor="none"))
+ax.text(REFLEN/2, 0.20, "reference chromosome - 4,641,652 bp", ha="center", va="center",
+        fontsize=8, color=GREY)
+ax.annotate("one 4.62 Mb contig", xy=(REFLEN/2, 0.9), ha="center", va="bottom",
+            fontsize=9.5, color=NAVY, fontweight="bold")
+ax.set_xlim(-90000, REFLEN + 90000); ax.set_ylim(0, 1.05); ax.set_yticks([])
+ax.set_xlabel("reference position (bp)")
+ax.set_title("Real Nanopore E. coli: whole chromosome in a single contig (99.6% in one piece)",
+             fontweight="bold", color=NAVY, fontsize=11)
+for sp in ("left", "right", "top"): ax.spines[sp].set_visible(False)
+fig.tight_layout()
+fig.savefig(os.path.join(IMG, "ont_genome.png"), dpi=150, bbox_inches="tight")
+plt.close(fig)
+
+# --- ONT 2: headline numbers ---
+fig, ax = plt.subplots(figsize=(9.0, 3.0))
+ax.axis("off")
+cards = [
+    ("contigs", f"{oasm['fragments']}", "chromosome = 1 contig"),
+    ("N50", f"{oasm['n50']/1e6:.2f} Mb", f"{oasm['n50']:,} bp"),
+    ("identity", f"{oa['aggregate_identity_pct']:.2f}%", "vs MG1655 reference"),
+    ("runtime", f"{O['runtime_seconds_wall']}s", f"{O['threads']} threads, native"),
+]
+for i, (k, v, sub) in enumerate(cards):
+    x = 0.02 + i * 0.245
+    ax.add_patch(Rectangle((x, 0.12), 0.225, 0.76, transform=ax.transAxes,
+                           facecolor="#f0f4f9", edgecolor="#d3dde8", zorder=1))
+    ax.text(x + 0.1125, 0.70, v, transform=ax.transAxes, ha="center", fontsize=21,
+            color=NAVY, fontweight="bold")
+    ax.text(x + 0.1125, 0.45, k, transform=ax.transAxes, ha="center", fontsize=11, color=BLUE)
+    ax.text(x + 0.1125, 0.27, sub, transform=ax.transAxes, ha="center", fontsize=8, color=GREY)
+ax.set_title(f"Real Nanopore run ERR14686362  -  {O['input']['estimated_coverage_x']}x of E. coli K-12  "
+             f"({O['input']['total_read_length_bp']/1e6:.0f} Mb of reads)",
+             fontweight="bold", color=NAVY, fontsize=11, y=0.98)
+fig.tight_layout()
+fig.savefig(os.path.join(IMG, "ont_summary.png"), dpi=150, bbox_inches="tight")
+plt.close(fig)
+
 print("wrote:", ", ".join(sorted(os.listdir(IMG))))

@@ -1,0 +1,37 @@
+{
+  "dataset": "Real Oxford Nanopore reads, ENA run ERR14686362",
+  "organism": "Escherichia coli K-12 (MinION)",
+  "reference": "E. coli K-12 MG1655, ENA U00096.3 (4,641,652 bp)",
+  "command": "flye --nano-hq ERR14686362.fastq.gz -o out -t 8",
+  "platform": "native Windows 11 x64, no WSL/Docker/Cygwin",
+  "flye_version": "2.9.6-b1802 (commit 886b8c1)",
+  "input": {
+    "total_read_length_bp": 128455269,
+    "read_count": 46733,
+    "estimated_coverage_x": 28
+  },
+  "runtime_seconds_wall": 127,
+  "threads": 8,
+  "assembly": {
+    "fragments": 4,
+    "total_length_bp": 4726242,
+    "n50": 4622749,
+    "largest_bp": 4622749,
+    "mean_coverage_x": 28,
+    "scaffolds": 0,
+    "note": "the entire chromosome assembled into ONE 4.62 Mb contig"
+  },
+  "accuracy_vs_reference": {
+    "method": "flye-minimap2 -cx asm5 (asm-to-ref), identity = matches / alignment_length",
+    "aggregate_identity_pct": 99.64,
+    "matched_bp": 4637426,
+    "aligned_bp": 4654237,
+    "genome_fraction_one_contig_pct": 99.59,
+    "main_contig_blocks": [
+      {"ref": "0-788946",        "identity_pct": 98.495},
+      {"ref": "789979-2102941",  "identity_pct": 99.902},
+      {"ref": "2107940-4543108", "identity_pct": 99.853},
+      {"ref": "4543642-4641652", "identity_pct": 99.952}
+    ]
+  }
+}
