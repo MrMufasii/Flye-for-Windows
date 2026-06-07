@@ -1,5 +1,9 @@
 # Flye for Windows
 
+[![Release](https://img.shields.io/github/v/release/MrMufasii/Flye-for-Windows?label=release&color=2f6db5)](https://github.com/MrMufasii/Flye-for-Windows/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/MrMufasii/Flye-for-Windows/total?label=downloads&color=16a34a)](https://github.com/MrMufasii/Flye-for-Windows/releases)
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows&logoColor=white)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20582186.svg)](https://doi.org/10.5281/zenodo.20582186)
 
 **A native-Windows build of the [Flye](https://github.com/mikolmogorov/Flye) long-read
