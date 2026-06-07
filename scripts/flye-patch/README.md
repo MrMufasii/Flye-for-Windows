@@ -7,7 +7,7 @@ statically linked** (no `libwinpthread-1.dll`, `libstdc++-6.dll`, ... only Windo
 system DLLs) took a surprisingly small patch plus two header shims and a precise
 build recipe. This is the whole surface.
 
-The source patch is [`flye-mingw.patch`](flye-mingw.patch) (5 files). The shims are
+The source patch is [`flye-mingw.patch`](flye-mingw.patch) (8 files). The shims are
 in [`shim/`](shim). The build that wires it together is
 [`../build_flye.sh`](../build_flye.sh).
 
@@ -25,20 +25,41 @@ The core already guards its Unix-isms (`sysconf`/`getrusage`/`sysctl`) behind
 `#ifdef __unix__`, and `common/memory_info.h` already has a `_WIN32` branch, so no
 `fork()`, `mmap`, or `std::filesystem` problems to chase.
 
-### Heap corruption on real-scale data: cap the alignment band — `src/sequence/alignment.cpp`
-This one only shows up on real reads, not the toy set. The consensus stitcher
-(`getAlignmentCigarKsw`) runs ksw2 and **doubles the band width until the alignment's
-deviation from the diagonal fits**. On the toy data (1.4 % divergence) the band stays
-tiny; on a real Nanopore run (~9 % overlap divergence) it climbs to tens of thousands —
-far beyond anything minimap2 itself ever uses — and ksw2's SSE kernel overruns its
-buffers at such bands. Single-threaded the overrun lands in slack and is survived; with
-several worker threads their allocations are packed together, so the overrun smashes a
-live heap header and the process dies with `STATUS_HEAP_CORRUPTION` (`0xC0000374`) right
-as the threads finish. Capping the band at **4096** (which still tolerates ~20 % net
-indel over the ≤20 kb stitch window) removes the pathological calls; the toy result is
-byte-identical (it never reached that band) and real genomes now assemble cleanly. This
-was the single hardest bug in the port — it's invisible until you run real data
-multi-threaded.
+### The hardest bug: heap corruption from `thread_local` at thread exit — `src/common/parallel.h`
+This one is a **MinGW-w64 toolchain defect**, not a Flye bug, and it took the longest to
+corner. Symptom: assembly runs fine at `-t 1` but dies with `STATUS_HEAP_CORRUPTION`
+(`0xC0000374`) at `-t 4`+, with the crash location *wandering* between runs (overlap
+estimation, disjointig extension, consensus, …). That wandering is the giveaway of a
+single wild write, not many bugs.
+
+A three-line repro nails it: 16 `std::thread`s, each touching one
+`thread_local std::vector`, even for a single round, heap-corrupts on this compiler —
+**static or dynamic**. Trivial `thread_local`s and ones whose destructor does *not* free
+heap are fine; the trigger is a `thread_local` whose destructor **frees memory** when a
+`std::thread` exits (the `__cxa_thread_atexit` path). Flye leans on `thread_local`
+scratch buffers (k-mer match lists, DP tables, kalloc pools) inside every parallel loop,
+and upstream `processInParallel` spawns and **joins a fresh batch of threads on every
+call** — so those destructors ran constantly and smashed the heap under load.
+
+Fix: `processInParallel` now runs on a **persistent pool of detached worker threads**,
+created once and never joined (the OS reclaims them at process exit). The workers' thread
+locals are therefore constructed once and **never destroyed**, so the buggy teardown path
+never runs. It's also faster than respawning threads for every parallel region.
+
+### Thread-safe logging — `src/common/logger.h`
+`Logger`'s `StreamWriter` wrote straight to a shared `std::ofstream` (and `std::cerr`)
+with no lock. With debug logging on, the parallel loops log concurrently, racing the
+`ofstream`'s `filebuf` and corrupting the heap on Windows. Each log message now holds a
+mutex for the `StreamWriter`'s whole lifetime (one statement = one atomic line). A manual
+move constructor was added because the `unique_lock` member makes `StreamWriter`
+non-copyable and the user destructor suppresses the implicit move.
+
+### Correct `BFContainer` random-access iterator — `src/common/bfcontainer.h`
+`BFContainer` (the chunked vector for billion-element arrays) had an iterator that
+violated the `RandomAccessIterator` contract: `operator[]` **mutated `*this`**, and
+post-`++`/`--` returned **dangling references** to locals. `std::sort` falls back to
+heapsort for large inputs and leans on `it[n]`; at high coverage a single read's k-mer
+matches span multiple chunks, so this could corrupt. Fixed to a correct iterator.
 
 ### `execinfo.h` shim  — `shim/execinfo.h`
 The crash handler (`common/utils.h`, `assemble/main_assemble.cpp`) uses glibc's

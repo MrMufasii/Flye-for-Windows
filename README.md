@@ -131,13 +131,15 @@ alignment.
 
 ## What the port changes
 
-Small surface: **6 source files + 2 header shims**, plus a precise build recipe. Full
+Small surface: **8 source files + 2 header shims**, plus a precise build recipe. Full
 write-up in [`scripts/flye-patch/README.md`](scripts/flye-patch/README.md).
 
 | Area | Fix |
 |---|---|
+| **Heap corruption at `-t >1`** | MinGW-w64 corrupts the heap when a `std::thread` exits and destroys a heap-owning `thread_local` (the `__cxa_thread_atexit` path). Flye uses `thread_local` scratch buffers in every parallel loop and respawned threads per call. **Fix: a persistent pool of detached workers** (`parallel.h`) so those destructors never run. *This was the hardest bug.* |
+| **Non-thread-safe logger** | `Logger` wrote to a shared `ofstream`/`cerr` unlocked; parallel debug logging raced the filebuf → heap corruption. Now mutex-guarded per message (`logger.h`) |
+| **Broken `BFContainer` iterator** | `operator[]` mutated `*this`; post-`++`/`--` returned dangling refs. Bites `std::sort`'s heapsort on multi-chunk containers. Fixed to a correct random-access iterator (`bfcontainer.h`) |
 | **LLP64** | `std::max(size_t, 1UL)` won't deduce on Windows → cast literal to `size_t` |
-| **Heap corruption on real data** | the consensus aligner doubles the ksw2 band until the alignment fits; on divergent reads it reached tens of thousands and overran ksw2's SSE buffers (fatal only multi-threaded). **Cap the band at 4096** |
 | **`<execinfo.h>`** | shim with no-op `backtrace()` stubs (crash handler) |
 | **`<regex.h>`** | shim stubs for `samtools split`/`tview` (MinGW has no POSIX regex; Flye never calls them) |
 | **`which()`** | also try `PATHEXT` so bare `flye-modules` resolves to `flye-modules.exe` |
@@ -215,7 +217,7 @@ Flye-for-Windows/
     setup_toolchain.ps1        installs winlibs MinGW-w64 (build-time only)
     installer/                 flye_windows.iss + build_flye_installer.ps1
     flye-patch/
-      flye-mingw.patch         the 6-file source port
+      flye-mingw.patch         the 8-file source port
       shim/execinfo.h, regex.h POSIX-header shims for MinGW
       flye-src-886b8c1.tar.gz  pinned, vendored Flye 2.9.6 source
       README.md                detailed porting notes

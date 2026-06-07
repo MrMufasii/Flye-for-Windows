@@ -187,6 +187,324 @@ index 135e260..be7fd63 100644
  	const char *opt_str = "2aSDw:k:K:t:r:f:Vv:g:G:I:d:XT:s:x:Hcp:M:n:z:A:B:O:E:m:N:Qu:R:hF:LC:yYPo:e:U:j:";
  	ketopt_t o = KETOPT_INIT;
  	mm_mapopt_t opt;
+diff --git a/src/common/bfcontainer.h b/src/common/bfcontainer.h
+index dc3a8e1..8dd9b5c 100644
+--- a/src/common/bfcontainer.h
++++ b/src/common/bfcontainer.h
+@@ -212,10 +212,10 @@ public:
+ 			return *this;
+ 		}
+ 
+-        BFIterator& operator++(int) 
++        BFIterator operator++(int)
+ 		{
+-			auto tmp(*this); 
+-			++(*tmp); 
++			auto tmp(*this);
++			++(*this);
+ 			return tmp;
+ 		}
+ 
+@@ -230,14 +230,19 @@ public:
+ 			return *this;
+ 		}
+ 
+-        BFIterator& operator--(int) 
++        BFIterator operator--(int)
+ 		{
+-			auto tmp(*this); 
+-			--tmp; 
++			auto tmp(*this);
++			--(*this);
+ 			return tmp;
+ 		}
+ 
+-		T& operator[](difference_type n) {return *(*this += n);}
++		//NB: operator[] must NOT modify the iterator (RandomAccessIterator
++		//contract). The original "*(*this += n)" mutated *this, which corrupts
++		//the heap once std::sort falls back to heapsort (it[] heavy) on large,
++		//multi-chunk containers - the cause of STATUS_HEAP_CORRUPTION on big,
++		//repetitive read sets. Compute on a copy instead.
++		T& operator[](difference_type n) const {auto tmp = *this; tmp += n; return *tmp;}
+ 
+ 		T& operator*() const {return *_chunkCur;}
+         T* operator->() const {return _chunkCur;}
+diff --git a/src/common/logger.h b/src/common/logger.h
+index 2526206..a538d5e 100644
+--- a/src/common/logger.h
++++ b/src/common/logger.h
+@@ -8,6 +8,7 @@
+ #include <fstream>
+ #include <ctime>
+ #include <stdexcept>
++#include <mutex>
+ 
+ class Logger
+ {
+@@ -30,24 +31,43 @@ public:
+ 
+ 	void setDebugging(bool debug) {_debug = debug;}
+ 
++	//A single message (one "Logger::get().xxx() << ... << ...;" statement) is
++	//built and flushed while holding the logger mutex for the StreamWriter's whole
++	//lifetime. Upstream wrote to the shared std::ofstream / std::cerr with no lock,
++	//which on Windows races the ofstream's filebuf between worker threads and
++	//smashes the heap (STATUS_HEAP_CORRUPTION) - debug logging happens inside the
++	//parallel overlap/extension/consensus loops. The lock also keeps lines from
++	//interleaving.
+ 	class StreamWriter
+ 	{
+ 	public:
+-		StreamWriter(const std::string& level, 
+-					 std::ostream* consoleStream = nullptr,
+-					 std::ostream* fileStream = nullptr):
+-			_fileStream(fileStream), _consoleStream(consoleStream)
++		StreamWriter(const std::string& level,
++					 std::ostream* consoleStream,
++					 std::ostream* fileStream,
++					 std::mutex& mtx):
++			_fileStream(fileStream), _consoleStream(consoleStream),
++			_lock(mtx)
+ 		{
+ 			if (_fileStream) *_fileStream << timestamp() << " " << level << " ";
+-			if (_consoleStream) *_consoleStream << timestamp() 
++			if (_consoleStream) *_consoleStream << timestamp()
+ 												<< " " << level << " ";
+ 		}
++		//Move ctor: needed because the unique_lock member makes StreamWriter
++		//non-copyable, and the user destructor suppresses the implicit move. Null
++		//the moved-from streams so only the live object flushes the trailing endl.
++		StreamWriter(StreamWriter&& o):
++			_fileStream(o._fileStream), _consoleStream(o._consoleStream),
++			_lock(std::move(o._lock))
++		{
++			o._fileStream = nullptr;
++			o._consoleStream = nullptr;
++		}
+ 		~StreamWriter()
+ 		{
+ 			if (_fileStream) *_fileStream << std::endl;
+ 			if (_consoleStream) *_consoleStream << std::endl;
+ 		}
+-		
++
+ 		template <class T>
+ 		Logger::StreamWriter& operator<< (const T& val)
+ 		{
+@@ -59,31 +79,32 @@ public:
+ 	private:
+ 		std::ostream* _fileStream;
+ 		std::ostream* _consoleStream;
++		std::unique_lock<std::mutex> _lock;
+ 	};
+ 
+ 	StreamWriter info()
+ 	{
+ 		std::ostream* logPtr = _logFileSet ? &_logFile : nullptr;
+-		return StreamWriter("INFO:", &std::cerr, logPtr);
++		return StreamWriter("INFO:", &std::cerr, logPtr, _mutex);
+ 	}
+ 
+ 	StreamWriter warning()
+ 	{
+ 		std::ostream* logPtr = _logFileSet ? &_logFile : nullptr;
+-		return StreamWriter("WARNING:", &std::cerr, logPtr);
++		return StreamWriter("WARNING:", &std::cerr, logPtr, _mutex);
+ 	}
+ 
+ 	StreamWriter error()
+ 	{
+ 		std::ostream* logPtr = _logFileSet ? &_logFile : nullptr;
+-		return StreamWriter("ERROR:", &std::cerr, logPtr);
++		return StreamWriter("ERROR:", &std::cerr, logPtr, _mutex);
+ 	}
+ 
+ 	StreamWriter debug()
+ 	{
+ 		std::ostream* logPtr = _logFileSet ? &_logFile : nullptr;
+ 		std::ostream* consolePtr = _debug ? &std::cerr : nullptr;
+-		return StreamWriter("DEBUG:", consolePtr, logPtr);
++		return StreamWriter("DEBUG:", consolePtr, logPtr, _mutex);
+ 	}
+ 
+ private:
+@@ -109,4 +130,5 @@ private:
+ 	bool _debug;
+ 	bool _logFileSet;
+ 	std::ofstream _logFile;
++	std::mutex _mutex;
+ };
+diff --git a/src/common/parallel.h b/src/common/parallel.h
+index a06f52c..de6bd54 100644
+--- a/src/common/parallel.h
++++ b/src/common/parallel.h
+@@ -6,10 +6,109 @@
+ #include <functional>
+ #include <atomic>
+ #include <thread>
++#include <mutex>
++#include <condition_variable>
+ 
+ #include "progress_bar.h"
+ 
+-//simple thread pool implementation
++//A persistent pool of DETACHED worker threads, created once and never shut down.
++//
++//Why (Windows / MinGW-w64): when a std::thread exits, the C++ runtime destroys
++//that thread's thread_local objects (the __cxa_thread_atexit path). On MinGW-w64
++//this corrupts the process heap (STATUS_HEAP_CORRUPTION) whenever a thread_local
++//owns heap memory and frees it in its destructor - which is exactly how Flye uses
++//thread_local scratch buffers (k-mer match lists, DP tables, kalloc pools, ...)
++//inside every parallel loop. Upstream created and joined a fresh batch of threads
++//on each processInParallel() call, so those destructors ran constantly and the
++//heap was smashed non-deterministically under load.
++//
++//Reusing a fixed set of workers that are detached and never joined means each
++//worker's thread_locals are constructed once and never destroyed (the OS reclaims
++//them when the process exits), side-stepping the toolchain bug entirely. It is
++//also simply faster than respawning threads for every parallel region.
++class ThreadPool
++{
++public:
++	static ThreadPool& get(size_t numThreads)
++	{
++		//leaked on purpose: the workers must outlive all callers, and must not be
++		//joined/destroyed (see class comment).
++		static ThreadPool* instance = new ThreadPool(numThreads);
++		return *instance;
++	}
++
++	//Runs task(i) for i in [0, count) across the worker threads and blocks until
++	//all have finished. Reentrancy is not supported (Flye never nests these).
++	void run(size_t count, const std::function<void(size_t)>& task)
++	{
++		if (count == 0) return;
++		{
++			std::unique_lock<std::mutex> lock(_mutex);
++			_task = &task;
++			_count = count;
++			_next = 0;
++			_completed = 0;
++			++_batch;
++		}
++		_cvWork.notify_all();
++
++		std::unique_lock<std::mutex> lock(_mutex);
++		_cvDone.wait(lock, [this] {return _completed >= _count;});
++	}
++
++	size_t size() const {return _numThreads;}
++
++private:
++	explicit ThreadPool(size_t numThreads): _numThreads(numThreads)
++	{
++		for (size_t i = 0; i < numThreads; ++i)
++		{
++			std::thread([this] {this->workerLoop();}).detach();
++		}
++	}
++
++	void workerLoop()
++	{
++		size_t myBatch = 0;
++		while (true)
++		{
++			const std::function<void(size_t)>* task;
++			size_t count;
++			{
++				std::unique_lock<std::mutex> lock(_mutex);
++				_cvWork.wait(lock, [this, myBatch] {return _batch != myBatch;});
++				myBatch = _batch;
++				task = _task;
++				count = _count;
++			}
++
++			while (true)
++			{
++				size_t i = _next.fetch_add(1);
++				if (i >= count) break;
++				(*task)(i);
++				if (_completed.fetch_add(1) + 1 >= count)
++				{
++					std::unique_lock<std::mutex> lock(_mutex);
++					_cvDone.notify_all();
++				}
++			}
++		}
++	}
++
++	size_t 					_numThreads;
++	std::mutex 				_mutex;
++	std::condition_variable _cvWork;
++	std::condition_variable _cvDone;
++	const std::function<void(size_t)>* _task = nullptr;
++	size_t 					_count = 0;
++	size_t 					_batch = 0;
++	std::atomic<size_t> 	_next{0};
++	std::atomic<size_t> 	_completed{0};
++};
++
++
++//simple parallel-for, backed by the persistent thread pool above.
+ //updateFun should be thread-safe!
+ template <class T>
+ void processInParallel(const std::vector<T>& scheduledTasks,
+@@ -18,42 +117,25 @@ void processInParallel(const std::vector<T>& scheduledTasks,
+ {
+ 	if (scheduledTasks.empty()) return;
+ 
+-	std::atomic<size_t> jobId(0);
+ 	ProgressPercent progress(scheduledTasks.size());
+ 	if (progressBar) progress.advance(0);
+ 
+-	auto threadWorker = [&jobId, &scheduledTasks, &updateFun, 
+-						 &progress, progressBar]()
++	//serial fast path (also what callers asking for a single thread expect)
++	if (maxThreads <= 1)
+ 	{
+-		while (true)
++		for (const auto& task : scheduledTasks)
+ 		{
+-			size_t expected = 0;
+-			while(true)
+-			{
+-				expected = jobId;
+-				if (jobId == scheduledTasks.size()) 
+-				{
+-					return;
+-				}
+-				if (jobId.compare_exchange_weak(expected, expected + 1))
+-				{
+-					break;
+-				}
+-			}
+-			updateFun(scheduledTasks[expected]);
++			updateFun(task);
+ 			if (progressBar) progress.advance();
+ 		}
+-	};
+-
+-	std::vector<std::thread> threads(std::min(maxThreads, 
+-											  scheduledTasks.size()));
+-	for (size_t i = 0; i < threads.size(); ++i)
+-	{
+-		threads[i] = std::thread(threadWorker);
+-	}
+-	for (size_t i = 0; i < threads.size(); ++i)
+-	{
+-		threads[i].join();
++		return;
+ 	}
+-}
+ 
++	ThreadPool& pool = ThreadPool::get(maxThreads);
++	pool.run(scheduledTasks.size(),
++			 [&scheduledTasks, &updateFun, &progress, progressBar] (size_t i)
++			 {
++				 updateFun(scheduledTasks[i]);
++				 if (progressBar) progress.advance();
++			 });
++}
 diff --git a/src/repeat_graph/repeat_resolver.cpp b/src/repeat_graph/repeat_resolver.cpp
 index 7dce660..ee419d8 100644
 --- a/src/repeat_graph/repeat_resolver.cpp
@@ -209,31 +527,3 @@ index 7dce660..ee419d8 100644
  	if (inconsistentHangs > threshold)
  	{
  		Logger::get().debug() << "SuspiciousOverhangs: " << checkEdge->edgeId.signedId();
-diff --git a/src/sequence/alignment.cpp b/src/sequence/alignment.cpp
-index 2d842d1..1df1358 100644
---- a/src/sequence/alignment.cpp
-+++ b/src/sequence/alignment.cpp
-@@ -149,7 +149,7 @@ float getAlignmentCigarKsw(const DnaSequence& trgSeq, size_t trgBegin, size_t tr
- 	for (;;)
- 	{
- 		memset(&ez, 0, sizeof(ksw_extz_t));
--		ksw_extz2_sse(buf.memPool, qryByte.size(), &qryByte[0], 
-+		ksw_extz2_sse(buf.memPool, qryByte.size(), &qryByte[0],
- 					  trgByte.size(), &trgByte[0], NUM_NUCL,
- 					  subsMat, gapOpen, gapExtend, bandWidth, Z_DROP, 
- 					  END_BONUS, FLAG, &ez);
-@@ -172,6 +172,14 @@ float getAlignmentCigarKsw(const DnaSequence& trgSeq, size_t trgBegin, size_t tr
- 		}
- 
- 		if (bandWidth > (int)std::max(qryByte.size(), trgByte.size())) break; //just in case
-+		//Windows port: cap the band. Upstream doubles it until the alignment's
-+		//deviation fits, which on divergent real reads can reach tens of thousands -
-+		//far beyond anything minimap2 itself uses. ksw2's SSE kernel overruns its
-+		//buffers at such bands (harmless slack single-threaded, but corrupts the heap
-+		//once several threads' allocations are packed together -> STATUS_HEAP_CORRUPTION).
-+		//A 4096 band already tolerates ~20% net indel over the <=20 kb stitch window.
-+		const int MAX_BAND = 4096;
-+		if (bandWidth >= MAX_BAND) break;
- 		bandWidth *= 2;
- 	}
- 
