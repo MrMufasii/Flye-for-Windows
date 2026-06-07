@@ -14,6 +14,7 @@ authors:
 type: software
 license: BSD-3-Clause
 version: "1.0.0"
+doi: "10.5281/zenodo.20582186"
 repository-code: "https://github.com/MrMufasii/Flye-for-Windows"
 url: "https://github.com/MrMufasii/Flye-for-Windows"
 keywords:

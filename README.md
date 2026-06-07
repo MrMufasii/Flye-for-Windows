@@ -1,5 +1,7 @@
 # Flye for Windows
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20582186.svg)](https://doi.org/10.5281/zenodo.20582186)
+
 **A native-Windows build of the [Flye](https://github.com/mikolmogorov/Flye) long-read
 genome assembler — no WSL, no Docker, no Cygwin, no Linux VM.** A one-click installer,
 a point-and-click GUI, and `.exe`s that run on a stock Windows 10/11 machine. Every
@@ -237,12 +239,14 @@ Flye-for-Windows/
   (for metagenomes also cite **metaFlye**, *Nat. Methods* 2020,
   doi:[10.1038/s41592-020-00971-x](https://doi.org/10.1038/s41592-020-00971-x)).
 - **bundled tools** — minimap2 (Li, 2018) and samtools/htslib (Danecek et al., 2021).
-- **this Windows port** — Sheridan, A. *Flye for Windows (native port).*
-  https://github.com/MrMufasii/Flye-for-Windows — DOI: _pending (Zenodo)_.
-  A machine-readable [`CITATION.cff`](CITATION.cff) is included.
+- **this Windows port** — Sheridan, A. *Flye for Windows (native port).* Zenodo.
+  doi:[10.5281/zenodo.20582186](https://doi.org/10.5281/zenodo.20582186) —
+  https://github.com/MrMufasii/Flye-for-Windows. A machine-readable
+  [`CITATION.cff`](CITATION.cff) is included.
 
 > Example methods sentence: *“Long-read assembly was performed with Flye (Kolmogorov
-> et al., 2019) via the native-Windows port (Sheridan; DOI…).”*
+> et al., 2019) via the native-Windows port (Sheridan, 2026;
+> doi:10.5281/zenodo.20582186).”*
 
 ---
 
