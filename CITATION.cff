@@ -1,0 +1,73 @@
+cff-version: 1.2.0
+message: >-
+  If you use this Windows port, please cite the upstream Flye paper(s) AND this
+  repository. See the "Citing" section of the README.
+title: "Flye for Windows (native port)"
+abstract: >-
+  A native-Windows build of the Flye long-read genome assembler (Oxford Nanopore /
+  PacBio), with its C++ core and bundled minimap2 / samtools compiled to run
+  natively on Windows without WSL, Docker, Cygwin or a Linux VM.
+authors:
+  - family-names: Sheridan
+    given-names: Alex
+    alias: MrMufasii
+type: software
+license: BSD-3-Clause
+version: "1.0.0"
+repository-code: "https://github.com/MrMufasii/Flye-for-Windows"
+url: "https://github.com/MrMufasii/Flye-for-Windows"
+keywords:
+  - bioinformatics
+  - genome assembly
+  - long reads
+  - Nanopore
+  - PacBio
+  - Windows
+  - Flye
+references:
+  - type: article
+    title: "Assembly of long, error-prone reads using repeat graphs"
+    authors:
+      - family-names: Kolmogorov
+        given-names: Mikhail
+      - family-names: Yuan
+        given-names: Jeffrey
+      - family-names: Lin
+        given-names: Yu
+      - family-names: Pevzner
+        given-names: Pavel A.
+    journal: "Nature Biotechnology"
+    year: 2019
+    volume: "37"
+    issue: "5"
+    doi: "10.1038/s41587-019-0072-8"
+  - type: article
+    title: "metaFlye: scalable long-read metagenome assembly using repeat graphs"
+    authors:
+      - family-names: Kolmogorov
+        given-names: Mikhail
+      - family-names: Bickhart
+        given-names: Derek M.
+      - family-names: Behsaz
+        given-names: Bahar
+      - family-names: Gurevich
+        given-names: Alexey
+      - family-names: Rayko
+        given-names: Mikhail
+      - family-names: Shin
+        given-names: Sung Bong
+      - family-names: Kuhn
+        given-names: Kristen
+      - family-names: Yuan
+        given-names: Jeffrey
+      - family-names: Polevikov
+        given-names: Evgeny
+      - family-names: Smith
+        given-names: Timothy P. L.
+      - family-names: Pevzner
+        given-names: Pavel A.
+    journal: "Nature Methods"
+    year: 2020
+    volume: "17"
+    issue: "11"
+    doi: "10.1038/s41592-020-00971-x"

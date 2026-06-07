@@ -227,6 +227,25 @@ Flye-for-Windows/
 
 ---
 
+## Citing
+
+**If you use this port, please cite both the upstream tool and this repository:**
+
+- **Flye** — Kolmogorov M. *et al.* (2019) *Assembly of long, error-prone reads using
+  repeat graphs.* **Nature Biotechnology** 37:540–546.
+  doi:[10.1038/s41587-019-0072-8](https://doi.org/10.1038/s41587-019-0072-8)
+  (for metagenomes also cite **metaFlye**, *Nat. Methods* 2020,
+  doi:[10.1038/s41592-020-00971-x](https://doi.org/10.1038/s41592-020-00971-x)).
+- **bundled tools** — minimap2 (Li, 2018) and samtools/htslib (Danecek et al., 2021).
+- **this Windows port** — Sheridan, A. *Flye for Windows (native port).*
+  https://github.com/MrMufasii/Flye-for-Windows — DOI: _pending (Zenodo)_.
+  A machine-readable [`CITATION.cff`](CITATION.cff) is included.
+
+> Example methods sentence: *“Long-read assembly was performed with Flye (Kolmogorov
+> et al., 2019) via the native-Windows port (Sheridan; DOI…).”*
+
+---
+
 ## Credits & license
 
 Flye is by Mikhail Kolmogorov et al. — see the
