@@ -6,6 +6,13 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows&logoColor=white)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20582186.svg)](https://doi.org/10.5281/zenodo.20582186)
 
+**Bundled tool stack** (all native Windows):<br>
+![Flye](https://img.shields.io/badge/Flye-2.9.6-1b2a4a)
+![minimap2](https://img.shields.io/badge/minimap2-2.24-2f6db5)
+![samtools](https://img.shields.io/badge/samtools-1.9-1aa6a6)
+![htslib](https://img.shields.io/badge/htslib-1.9-1aa6a6)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+
 **A native-Windows build of the [Flye](https://github.com/mikolmogorov/Flye) long-read
 genome assembler — no WSL, no Docker, no Cygwin, no Linux VM.** A one-click installer,
 a point-and-click GUI, and `.exe`s that run on a stock Windows 10/11 machine. Every
