@@ -1,0 +1,39 @@
+{
+  "dataset": "Flye bundled toy set: ecoli_500kb_reads_hifi.fastq.gz",
+  "organism": "Escherichia coli K-12 MG1655 (500 kb region)",
+  "reference": "flye/tests/data/ecoli_500kb.fasta",
+  "command": "python bin/flye --pacbio-corr ecoli_500kb_reads_hifi.fastq.gz -g 500k -o out -t 8 -m 1000",
+  "platform": "native Windows 11 x64, no WSL/Docker/Cygwin",
+  "flye_version": "2.9.6-b1802 (commit 886b8c1)",
+  "input": {
+    "total_read_length_bp": 8397200,
+    "reads_n50": 2700,
+    "estimated_coverage_x": 16
+  },
+  "runtime_seconds_wall": 11,
+  "threads": 8,
+  "assembly": {
+    "fragments": 4,
+    "total_length_bp": 417315,
+    "n50": 225779,
+    "largest_bp": 225779,
+    "mean_coverage_x": 20,
+    "scaffolds": 0
+  },
+  "accuracy_vs_reference": {
+    "method": "flye-minimap2 -cx asm5 (asm-to-ref), identity = matches / alignment_length",
+    "aggregate_identity_pct": 99.9986,
+    "reference_span_covered": "584-419034 (contiguous tiling)",
+    "contigs": [
+      {"name": "contig_4", "length_bp": 225779, "matches": 225770, "aln_len": 225776, "identity_pct": 99.997, "ref": "1-225779"},
+      {"name": "contig_2", "length_bp": 89462,  "matches": 89462,  "aln_len": 89462,  "identity_pct": 100.000, "ref": "226244-315706"},
+      {"name": "contig_3", "length_bp": 75226,  "matches": 75226,  "aln_len": 75226,  "identity_pct": 100.000, "ref": "315707-390933"},
+      {"name": "contig_1", "length_bp": 26848,  "matches": 26848,  "aln_len": 26848,  "identity_pct": 100.000, "ref": "392186-419034"}
+    ]
+  },
+  "binaries_static": {
+    "flye-modules.exe":  ["KERNEL32.dll", "api-ms-win-crt-*"],
+    "flye-minimap2.exe": ["KERNEL32.dll", "api-ms-win-crt-*"],
+    "flye-samtools.exe": ["KERNEL32.dll", "api-ms-win-crt-*", "WS2_32.dll"]
+  }
+}

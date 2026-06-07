@@ -1,0 +1,211 @@
+diff --git a/flye/polishing/alignment.py b/flye/polishing/alignment.py
+index a692359..99df824 100644
+--- a/flye/polishing/alignment.py
++++ b/flye/polishing/alignment.py
+@@ -244,10 +244,10 @@ def _run_minimap(reference_file, reads_files, num_proc, reads_type, out_file):
+         mode = "map-ont"
+         extra_args = ["-k", "17"]
+ 
+-    cmdline = [MINIMAP_BIN, "'" + reference_file + "'"]
+-    cmdline.extend(["'" + read_file + "'" for read_file in reads_files])
+-    cmdline.extend(["-x", mode, "-t", str(num_proc)])
+-    cmdline.extend(extra_args)
++    minimap_cmd = [MINIMAP_BIN, reference_file]
++    minimap_cmd.extend(reads_files)
++    minimap_cmd.extend(["-x", mode, "-t", str(num_proc)])
++    minimap_cmd.extend(extra_args)
+ 
+     #Produces gzipped SAM sorted by reference name. Since it's not sorted by
+     #read name anymore, it's important that all reads have SEQ.
+@@ -260,25 +260,42 @@ def _run_minimap(reference_file, reads_files, num_proc, reads_type, out_file):
+     #-Q don't output fastq quality
+     tmp_prefix = os.path.join(os.path.dirname(out_file),
+                               "sort_" + datetime.datetime.now().strftime("%y%m%d_%H%M%S"))
+-    cmdline.extend(["-a", "-p", "0.5", "-N", "10", "--sam-hit-only", "-L", "-K", BATCH,
+-                    "-z", "1000", "-Q", "--secondary-seq", "-I", "64G"])
+-    cmdline.extend(["|", SAMTOOLS_BIN, "view", "-T", "'" + reference_file + "'", "-u", "-"])
+-    cmdline.extend(["|", SAMTOOLS_BIN, "sort", "-T", "'" + tmp_prefix + "'", "-O", "bam",
+-                    "-@", SORT_THREADS, "-l", "1", "-m", SORT_MEM])
+-    cmdline.extend(["-o", "'" + out_file + "'"])
+-
+-    #logger.debug("Running: " + " ".join(cmdline))
++    minimap_cmd.extend(["-a", "-p", "0.5", "-N", "10", "--sam-hit-only", "-L", "-K", BATCH,
++                        "-z", "1000", "-Q", "--secondary-seq", "-I", "64G"])
++    unsorted_bam = out_file + ".unsorted.bam"
++    view_cmd = [SAMTOOLS_BIN, "view", "-T", reference_file, "-u", "-o", unsorted_bam, "-"]
++    sort_cmd = [SAMTOOLS_BIN, "sort", "-T", tmp_prefix, "-O", "bam",
++                "-@", SORT_THREADS, "-l", "1", "-m", SORT_MEM, "-o", out_file, unsorted_bam]
++
++    #Upstream Flye ran this as a "minimap2 | samtools view | samtools sort"
++    #pipeline through '/bin/bash -c "... pipefail"'. Neither /bin/bash nor reading
++    #a binary BAM stream from an anonymous pipe works on native Windows (htslib's
++    #bgzf reader returns EOF on the first read of a piped stdin). So: pipe minimap2
++    #into "samtools view" (text->BAM, which reads a pipe fine), have view write the
++    #unsorted BAM to a temp file, then let "samtools sort" read that file. No shell,
++    #so paths with spaces need no quoting, and it stays portable to Linux.
++    #logger.debug("Running: " + " ".join(minimap_cmd))
+     try:
+-        devnull = open(os.devnull, "wb")
+-        subprocess.check_call(["/bin/bash", "-c",
+-                              "set -eo pipefail; " + " ".join(cmdline)],
+-                              stderr=open(stderr_file, "w"),
+-                              stdout=open(os.devnull, "w"))
+-        subprocess.check_call(SAMTOOLS_BIN + " index -c -@ 4 " + "'" + out_file + "'", shell=True)
++        with open(stderr_file, "w") as stderr_fp:
++            p_mini = subprocess.Popen(minimap_cmd, stdout=subprocess.PIPE,
++                                      stderr=stderr_fp)
++            p_view = subprocess.Popen(view_cmd, stdin=p_mini.stdout, stderr=stderr_fp)
++            p_mini.stdout.close()
++            p_view.communicate()
++            p_mini.wait()
++            for tool_name, proc in (("minimap2", p_mini), ("samtools view", p_view)):
++                if proc.returncode != 0:
++                    raise AlignmentException(
++                        "{0} failed (exit code {1}). See the alignment error log: {2}"
++                        .format(tool_name, proc.returncode, stderr_file))
++            subprocess.check_call(sort_cmd, stderr=stderr_fp)
++        if os.path.isfile(unsorted_bam):
++            os.remove(unsorted_bam)
++        subprocess.check_call([SAMTOOLS_BIN, "index", "-c", "-@", "4", out_file])
+         #os.remove(stderr_file)
+ 
+     except (subprocess.CalledProcessError, OSError) as e:
+         logger.error("Error running minimap2, terminating. See the alignment error log "
+                      " for details: " + stderr_file)
+-        logger.error("Cmd: " + " ".join(cmdline))
++        logger.error("Cmd: " + " ".join(minimap_cmd))
+         raise AlignmentException(str(e))
+diff --git a/flye/utils/sam_parser.py b/flye/utils/sam_parser.py
+index b9a0145..b5b95b5 100644
+--- a/flye/utils/sam_parser.py
++++ b/flye/utils/sam_parser.py
+@@ -353,10 +353,13 @@ class SynchronizedSamReader(object):
+         if region_end is None:
+             region_end = len(contig_str)
+ 
+-        samtools_out = subprocess.Popen("{0} depth {1} -r '{2}:{3}-{4}' -a -m 0 -Q 10 -l 100"
+-                                        .format(SAMTOOLS_BIN, self.aln_path,
+-                                                _STR(parsed_contig), region_start, region_end),
+-                                        shell=True, stdout=subprocess.PIPE).stdout
++        #list-form (shell=False) so it works on native Windows too, where cmd.exe
++        #would not strip the single quotes around the region argument.
++        region = "{0}:{1}-{2}".format(_STR(parsed_contig), region_start, region_end)
++        samtools_out = subprocess.Popen([SAMTOOLS_BIN, "depth", self.aln_path,
++                                         "-r", region, "-a", "-m", "0",
++                                         "-Q", "10", "-l", "100"],
++                                        stdout=subprocess.PIPE).stdout
+         all_cov_pos = []
+         for line in samtools_out:
+             _ctg, _pos, coverage = line.split()
+@@ -373,10 +376,9 @@ class SynchronizedSamReader(object):
+             region_end = len(contig_str)
+         #logger.debug("Reading region: {0} {1} {2}".format(region_id, region_start, region_end))
+ 
+-        aln_file = subprocess.Popen("{0} view {1} '{2}:{3}-{4}'"
+-                                        .format(SAMTOOLS_BIN, self.aln_path,
+-                                                _STR(parsed_contig), region_start, region_end),
+-                                    shell=True, stdout=subprocess.PIPE).stdout
++        region = "{0}:{1}-{2}".format(_STR(parsed_contig), region_start, region_end)
++        aln_file = subprocess.Popen([SAMTOOLS_BIN, "view", self.aln_path, region],
++                                    stdout=subprocess.PIPE).stdout
+ 
+         chunk_buffer = []
+         for line in aln_file:
+@@ -439,8 +441,8 @@ class SynchronizedSamReader(object):
+         return alignments
+ 
+     def get_all_alignments(self):
+-        aln_file = subprocess.Popen("{0} view {1}".format(SAMTOOLS_BIN, self.aln_path),
+-                                    shell=True, stdout=subprocess.PIPE).stdout
++        aln_file = subprocess.Popen([SAMTOOLS_BIN, "view", self.aln_path],
++                                    stdout=subprocess.PIPE).stdout
+ 
+         alignments = []
+         for line in aln_file:
+diff --git a/flye/utils/utils.py b/flye/utils/utils.py
+index 41d3aac..e530004 100644
+--- a/flye/utils/utils.py
++++ b/flye/utils/utils.py
+@@ -19,16 +19,25 @@ def which(program):
+     def is_exe(fpath):
+         return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+ 
++    # On Windows executables carry an extension (.exe/.bat/...). Flye refers to
++    # its helpers by bare name ("flye-modules"), so try the PATHEXT suffixes too.
++    exts = [""]
++    if os.name == "nt":
++        exts += [e.lower() for e in
++                 os.environ.get("PATHEXT", ".EXE;.BAT;.CMD").split(os.pathsep) if e]
++
+     fpath, _ = os.path.split(program)
+     if fpath:
+-        if is_exe(program):
+-            return program
++        for ext in exts:
++            if is_exe(program + ext):
++                return program + ext
+     else:
+         for path in os.environ["PATH"].split(os.pathsep):
+             path = path.strip('"')
+-            exe_file = os.path.join(path, program)
+-            if is_exe(exe_file):
+-                return exe_file
++            for ext in exts:
++                exe_file = os.path.join(path, program + ext)
++                if is_exe(exe_file):
++                    return exe_file
+ 
+     return None
+ 
+diff --git a/lib/minimap2/main.c b/lib/minimap2/main.c
+index 135e260..be7fd63 100644
+--- a/lib/minimap2/main.c
++++ b/lib/minimap2/main.c
+@@ -7,6 +7,11 @@
+ #include "mmpriv.h"
+ #include "ketopt.h"
+ 
++#ifdef _WIN32
++#include <io.h>
++#include <fcntl.h>
++#endif
++
+ #define MM_VERSION "2.24-r1155-dirty"
+ 
+ #ifdef __linux__
+@@ -122,6 +127,13 @@ static inline void yes_or_no(mm_mapopt_t *opt, int64_t flag, int long_idx, const
+ 
+ int main(int argc, char *argv[])
+ {
++#ifdef _WIN32
++	/* SAM/PAF flows through a pipe into samtools on Windows; keep stdout/stdin
++	 * binary so '\n' is not rewritten to '\r\n', which would corrupt the
++	 * downstream uncompressed-BAM stream ("Invalid BAM binary header"). */
++	_setmode(_fileno(stdout), _O_BINARY);
++	_setmode(_fileno(stdin), _O_BINARY);
++#endif
+ 	const char *opt_str = "2aSDw:k:K:t:r:f:Vv:g:G:I:d:XT:s:x:Hcp:M:n:z:A:B:O:E:m:N:Qu:R:hF:LC:yYPo:e:U:j:";
+ 	ketopt_t o = KETOPT_INIT;
+ 	mm_mapopt_t opt;
+diff --git a/src/repeat_graph/repeat_resolver.cpp b/src/repeat_graph/repeat_resolver.cpp
+index 7dce660..ee419d8 100644
+--- a/src/repeat_graph/repeat_resolver.cpp
++++ b/src/repeat_graph/repeat_resolver.cpp
+@@ -315,7 +315,7 @@ bool RepeatResolver::checkPathConsistency(const GraphEdge* checkEdge, GraphEdge*
+ 
+ 	
+ 	//construct a set of safe edges, definted by the read paths between the two uniqe edge candidates
+-	int minSafeFreq = std::max(outSpans[maxConn].size() / MIN_FREQ_RATE, 1UL);
++	int minSafeFreq = std::max(outSpans[maxConn].size() / MIN_FREQ_RATE, (size_t)1);
+ 	std::unordered_map<GraphEdge*, int> safeEdgesFrequencies;
+ 	for (auto edge : visitedEdges[maxConn])
+ 	{
+@@ -365,7 +365,7 @@ bool RepeatResolver::checkPathConsistency(const GraphEdge* checkEdge, GraphEdge*
+ 	}
+ 
+ 	//int threshold = std::max(checkEdge->meanCoverage / INCONSISTENT_HANG_RATE, 1);
+-	int threshold = std::max((outSpans[maxConn].size() + hangingPaths.size()) / INCONSISTENT_HANG_RATE, 1UL);
++	int threshold = std::max((outSpans[maxConn].size() + hangingPaths.size()) / INCONSISTENT_HANG_RATE, (size_t)1);
+ 	if (inconsistentHangs > threshold)
+ 	{
+ 		Logger::get().debug() << "SuspiciousOverhangs: " << checkEdge->edgeId.signedId();

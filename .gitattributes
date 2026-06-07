@@ -1,0 +1,18 @@
+# Keep Unix line endings on everything the build/run touches with bash/patch/gcc.
+# CRLF here would break `patch` (context mismatch) and bash (\r in the shebang).
+*.sh        text eol=lf
+*.patch     text eol=lf
+*.py        text eol=lf
+*.h         text eol=lf
+*.c         text eol=lf
+flye/bin/flye text eol=lf
+bin/flye    text eol=lf
+
+# Binary assets: never touch.
+*.exe        binary
+*.gz         binary
+*.png        binary
+*.mat        binary
+*.bam        binary
+*.fasta      binary
+*.fai        binary

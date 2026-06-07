@@ -1,0 +1,10 @@
+# build / run artifacts
+_build/
+_testout/
+toytest/
+out/
+out_dir/
+**/__pycache__/
+*.pyc
+# transient zlib download/extract created during build
+scripts/flye-patch/zlib*.tar.gz
