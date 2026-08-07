@@ -1,0 +1,74 @@
+name: Diagnose Flye WebAssembly CLI
+
+on:
+  push:
+    branches:
+      - agent/flye-wasm-complete
+    paths:
+      - .github/workflows/diagnose-flye-wasm.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download module from failed verification run
+        uses: actions/download-artifact@v4
+        with:
+          name: flye-2.9.6-complete-wasm
+          path: recovered-artifact
+          repository: MrMufasii/Flye-for-Windows
+          run-id: 31189841859
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wasmtime 33.0.2
+        shell: bash
+        run: |
+          set -euxo pipefail
+          archive="wasmtime-v33.0.2-x86_64-linux.tar.xz"
+          curl --fail --location --retry 5 \
+            --output "/tmp/${archive}" \
+            "https://github.com/bytecodealliance/wasmtime/releases/download/v33.0.2/${archive}"
+          tar -xJf "/tmp/${archive}" -C /tmp
+          sudo install -m 0755 /tmp/wasmtime-v33.0.2-x86_64-linux/wasmtime /usr/local/bin/wasmtime
+          wasmtime --version
+
+      - name: Exercise Wasmtime argument boundaries
+        shell: bash
+        run: |
+          set -uo pipefail
+          module="$PWD/recovered-artifact/wasm/dist/flye-2.9.6-complete.wasm"
+          test -s "$module"
+
+          try() {
+            local label="$1"
+            shift
+            local out="/tmp/${label}.out"
+            local status
+            printf '\n===== %s =====\n' "$label"
+            printf 'command:'
+            printf ' %q' "$@"
+            printf '\n'
+            set +e
+            timeout 120s "$@" >"$out" 2>&1
+            status=$?
+            set -e
+            printf 'status=%d bytes=%d\n' "$status" "$(wc -c <"$out")"
+            sed -n '1,120p' "$out"
+          }
+
+          try direct-runtime-help wasmtime -- "$module" --help
+          try direct-flye-version wasmtime -- "$module" -- --version
+          try run-flye-version wasmtime run "$module" -- --version
+          try direct-flye-help wasmtime -- "$module" -- --help
+          try run-flye-help wasmtime run "$module" -- --help
+          try explicit-entrypoint wasmtime -- "$module" --entrypoint=/opt/flye/bin/flye -- --version
+          try clean-env env -i PATH="$PATH" wasmtime -- "$module" -- --version
