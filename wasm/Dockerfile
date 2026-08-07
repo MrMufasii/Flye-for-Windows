@@ -9,6 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        autoconf \
         build-essential \
         ca-certificates \
         file \
@@ -22,6 +23,8 @@ COPY ${FLYE_SOURCE_TARBALL} /tmp/flye-source.tar.gz
 RUN tar -xzf /tmp/flye-source.tar.gz -C /opt/flye-src \
     && rm /tmp/flye-source.tar.gz \
     && mkdir -p bin \
+    && (cd lib/samtools-1.9/htslib-1.9 && autoheader && autoconf -Wno-syntax) \
+    && (cd lib/samtools-1.9 && autoheader && autoconf -Wno-syntax) \
     && make THREADS="${JOBS}" -j"${JOBS}" \
     && test -x bin/flye-modules \
     && test -x bin/flye-minimap2 \
