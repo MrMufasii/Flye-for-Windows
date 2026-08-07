@@ -6,6 +6,12 @@ contiguous wasm32 heap object. A 2048 MiB guest therefore crosses wasm32's
 2-GiB signed-address boundary before Linux starts. This patch enables Bochs'
 large-RAM-file backend and gives it a smaller in-memory working set while the
 guest still sees the full configured RAM.
+
+WASI SDK 19 does not link a ``tmpfile`` implementation, although Bochs' large
+RAM backend calls ``tmpfile64`` (mapped to ``tmpfile`` on this target). The
+patched Dockerfile therefore replaces that single call in the WASI Bochs copy
+with an explicit writable file under /tmp. Runtime launchers preopen a private
+host directory there.
 """
 
 from __future__ import annotations
@@ -82,7 +88,7 @@ ARG VM_MEMORY_SIZE_MB
 ARG VM_HOST_MEMORY_SIZE_MB
 RUN apt-get update && apt-get install -y gettext-base && mkdir /out
 COPY --link --from=assets ./config/bochs/bochsrc.template /
-RUN sed -i 's|^megs: ${MEMORY_SIZE}$|memory: guest=${MEMORY_SIZE}, host=${HOST_MEMORY_SIZE}, block_size=1024|' /bochsrc.template && \
+RUN sed -i 's|^megs: ${MEMORY_SIZE}$|memory: guest=${MEMORY_SIZE}, host=${HOST_MEMORY_SIZE}, block_size=1024|' /bochsrc.template && \\
     cat /bochsrc.template | MEMORY_SIZE=$VM_MEMORY_SIZE_MB HOST_MEMORY_SIZE=$VM_HOST_MEMORY_SIZE_MB envsubst > /out/bochsrc
 """,
         "Bochs guest/host memory configuration",
@@ -100,6 +106,27 @@ RUN sed -i 's|^megs: ${MEMORY_SIZE}$|memory: guest=${MEMORY_SIZE}, host=${HOST_M
         old="--disable-large-ramfile",
         new="--enable-large-ramfile",
         description="WASI Bochs large-RAM-file configure flag",
+    )
+
+    # wasi-sdk 19's libc leaves tmpfile unresolved. Keep the compatibility
+    # change scoped to the copied WASI Bochs source so the native BIOS and
+    # Emscripten builds remain byte-for-byte upstream.
+    bochs_copy = "COPY --link --from=bochs-repo / /Bochs\n\n"
+    bochs_copy_with_tmpfile_patch = """COPY --link --from=bochs-repo / /Bochs
+RUN sed -i \\
+    's|BX_MEM_THIS overflow_file = tmpfile64();|BX_MEM_THIS overflow_file = fopen("/tmp/bochs-memory.ram", "w+b");|' \\
+    /Bochs/bochs/memory/misc_mem.cc && \\
+    grep -F 'BX_MEM_THIS overflow_file = fopen("/tmp/bochs-memory.ram", "w+b");' \\
+    /Bochs/bochs/memory/misc_mem.cc
+
+"""
+    text = replace_once_in_region(
+        text,
+        start_marker=wasi_start,
+        end_marker=wasi_end,
+        old=bochs_copy,
+        new=bochs_copy_with_tmpfile_patch,
+        description="WASI Bochs tmpfile compatibility patch",
     )
 
     required = (
@@ -123,6 +150,19 @@ RUN sed -i 's|^megs: ${MEMORY_SIZE}$|memory: guest=${MEMORY_SIZE}, host=${HOST_M
         raise SystemExit(
             "patched WASI Bochs stage still disables large-RAM-file support"
         )
+    tmpfile_replacement = (
+        'BX_MEM_THIS overflow_file = fopen("/tmp/bochs-memory.ram", "w+b");'
+    )
+    if wasi_region.count(tmpfile_replacement) != 2:
+        raise SystemExit(
+            "patched WASI Bochs stage does not contain the expected tmpfile "
+            "replacement command and verification"
+        )
+    if wasi_region.count("tmpfile64();") != 1:
+        raise SystemExit(
+            "patched WASI Bochs stage should contain tmpfile64 only in the "
+            "source-rewrite search expression"
+        )
     return text
 
 
@@ -143,7 +183,8 @@ def main() -> int:
     args.output.write_text(patched, encoding="utf-8")
     print(
         "Patched container2wasm Dockerfile: enabled WASI Bochs large-RAM-file "
-        "support and split guest RAM from the wasm32 host working set."
+        "support, split guest RAM from the wasm32 host working set, and "
+        "replaced the unavailable WASI tmpfile call."
     )
     return 0
 
