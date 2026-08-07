@@ -120,6 +120,7 @@ jobs:
           docker inspect "$FLYE_NATIVE_IMAGE" > wasm/dist/native-image-inspect.json 2>/dev/null || true
 
       - name: Publish the complete WebAssembly package
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flye-2.9.6-complete-wasm

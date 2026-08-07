@@ -19,5 +19,12 @@ mkdir -p "$WORKDIR/.tmp"
 WORKDIR="$(cd "$WORKDIR" && pwd)"
 
 # The left side is the path seen by Flye inside the WebAssembly guest;
-# the right side is the host directory exposed through WASI.
-exec "$WASMTIME" --mapdir "/work::$WORKDIR" "$MODULE" "$@"
+# the right side is the host directory exposed through WASI. The delimiter
+# after the module terminates container2wasm's own runtime-option parsing, so
+# Flye options such as --nano-hq and --out-dir pass through unchanged.
+exec "$WASMTIME" \
+    --mapdir "/work::$WORKDIR" \
+    -- \
+    "$MODULE" \
+    -- \
+    "$@"

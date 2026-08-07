@@ -3,6 +3,7 @@ SHELL := /usr/bin/env bash
 FLYE_VERSION ?= 2.9.6
 IMAGE ?= flye-wasm-native:$(FLYE_VERSION)
 C2W ?= c2w
+C2W_SOURCE_REPO ?= https://github.com/container2wasm/container2wasm
 WASMTIME ?= wasmtime
 MODULE ?= dist/flye-$(FLYE_VERSION)-complete.wasm
 
@@ -15,7 +16,11 @@ image:
 
 wasm: image
 	mkdir -p "$(dir $(MODULE))"
-	"$(C2W)" --target-arch=amd64 "$(IMAGE)" "$(MODULE)"
+	"$(C2W)" \
+		--target-arch=amd64 \
+		--build-arg "SOURCE_REPO=$(C2W_SOURCE_REPO)" \
+		"$(IMAGE)" \
+		"$(MODULE)"
 	printf '0061736d' | xxd -r -p | cmp -n 4 - "$(MODULE)"
 	sha256sum "$(MODULE)" > "$(MODULE).sha256"
 

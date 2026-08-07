@@ -20,7 +20,12 @@ docker run --rm \
   "$IMAGE" "${COMMON[@]}" --out-dir /work/native
 
 echo "Running the same assembly inside WebAssembly..."
-"$WASMTIME_BIN" --mapdir "/work::$ROOT" "$MODULE" \
-  "${COMMON[@]}" --out-dir /work/wasm
+"$WASMTIME_BIN" \
+  --mapdir "/work::$ROOT" \
+  -- \
+  "$MODULE" \
+  -- \
+  "${COMMON[@]}" \
+  --out-dir /work/wasm
 
 python3 "$SCRIPT_DIR/assembly_parity.py" "$ROOT/native" "$ROOT/wasm"
