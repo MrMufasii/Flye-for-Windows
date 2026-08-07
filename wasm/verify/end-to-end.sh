@@ -17,14 +17,18 @@ COMMON=(--pacbio-corr "$READS" --genome-size 500k --threads 1 --min-overlap 1000
 echo "Running native baseline..."
 docker run --rm \
   --volume "$ROOT:/work" \
-  "$IMAGE" "${COMMON[@]}" --out-dir /work/native
+  "$IMAGE" \
+  /opt/flye/bin/flye \
+  "${COMMON[@]}" \
+  --out-dir /work/native
 
 echo "Running the same assembly inside WebAssembly..."
 "$WASMTIME_BIN" \
   --mapdir "/work::$ROOT" \
   -- \
   "$MODULE" \
-  -- \
+  -no-stdin \
+  /opt/flye/bin/flye \
   "${COMMON[@]}" \
   --out-dir /work/wasm
 

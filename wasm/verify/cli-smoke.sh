@@ -23,15 +23,19 @@ run_logged() {
     printf 'command failed with exit code %d:' "$status" >&2
     printf ' %q' "$@" >&2
     printf '\n' >&2
-    cat "$output" >&2
+    if [[ -s "$output" ]]; then
+      cat "$output" >&2
+    else
+      printf 'captured output is empty: %s\n' "$output" >&2
+    fi
     return "$status"
   fi
 }
 
 run_logged "$OUT/native-version.txt" \
-  docker run --rm "$IMAGE" --version
+  docker run --rm "$IMAGE" /opt/flye/bin/flye --version
 run_logged "$OUT/wasm-version.txt" \
-  "$WASMTIME_BIN" -- "$MODULE" -- --version
+  "$WASMTIME_BIN" -- "$MODULE" -no-stdin /opt/flye/bin/flye --version
 
 native_version="$(tr -d '\r' <"$OUT/native-version.txt")"
 wasm_version="$(tr -d '\r' <"$OUT/wasm-version.txt")"
@@ -47,17 +51,14 @@ if [[ "$native_version" != "$wasm_version" ]]; then
 fi
 
 run_logged "$OUT/native-help.txt" \
-  docker run --rm "$IMAGE" --help
+  docker run --rm "$IMAGE" /opt/flye/bin/flye --help
 run_logged "$OUT/wasm-help.txt" \
-  "$WASMTIME_BIN" -- "$MODULE" -- --help
+  "$WASMTIME_BIN" -- "$MODULE" -no-stdin /opt/flye/bin/flye --help
 python3 "$SCRIPT_DIR/cli_parity.py" "$OUT/native-help.txt" "$OUT/wasm-help.txt"
 
-# Replace the image entrypoint to verify every bundled executable from inside
-# the WASM guest. The second "--" terminates container2wasm runtime options so
-# that the leading-dash shell argument is forwarded unchanged.
+# With no image ENTRYPOINT, the c2w runtime's positional command is the
+# complete process to execute, allowing the bundled toolchain to be checked.
 run_logged "$OUT/wasm-toolchain.txt" \
-  "$WASMTIME_BIN" -- "$MODULE" \
-  --entrypoint=/bin/sh \
-  -- \
-  -lc 'set -eu; command -v python3; command -v flye; command -v flye-modules; command -v flye-minimap2; command -v flye-samtools; flye --version'
+  "$WASMTIME_BIN" -- "$MODULE" -no-stdin /bin/sh -lc \
+  'set -eu; command -v python3; command -v flye; command -v flye-modules; command -v flye-minimap2; command -v flye-samtools; flye --version'
 cat "$OUT/wasm-toolchain.txt"

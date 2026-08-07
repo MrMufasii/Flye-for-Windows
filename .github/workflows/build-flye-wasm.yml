@@ -40,7 +40,7 @@ jobs:
             --tag "$FLYE_NATIVE_IMAGE" \
             --file wasm/Dockerfile \
             .
-          docker run --rm "$FLYE_NATIVE_IMAGE" --version
+          docker run --rm "$FLYE_NATIVE_IMAGE" /opt/flye/bin/flye --version
 
       - name: Reclaim runner disk space
         shell: bash

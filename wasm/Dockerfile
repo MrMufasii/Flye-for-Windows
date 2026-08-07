@@ -83,5 +83,4 @@ ENV PATH=/opt/flye/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/
     TMPDIR=/work/.tmp
 
 WORKDIR /work
-ENTRYPOINT ["/opt/flye/bin/flye"]
-CMD ["--help"]
+CMD ["/opt/flye/bin/flye", "--help"]
