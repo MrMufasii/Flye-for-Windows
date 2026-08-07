@@ -9,7 +9,7 @@ ROOT="${FLYE_PARITY_DIR:-$WASM_DIR/dist/parity}"
 WASMTIME_BIN="${WASMTIME:-wasmtime}"
 ROOT="$(mkdir -p "$ROOT" && cd "$ROOT" && pwd)"
 rm -rf "$ROOT/native" "$ROOT/wasm"
-mkdir -p "$ROOT/native" "$ROOT/wasm"
+mkdir -p "$ROOT/native" "$ROOT/wasm" "$ROOT/.tmp"
 
 READS=/opt/flye/flye/tests/data/ecoli_500kb_reads_hifi.fastq.gz
 COMMON=(--pacbio-corr "$READS" --genome-size 500k --threads 1 --min-overlap 1000 --deterministic)

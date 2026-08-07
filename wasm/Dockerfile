@@ -29,14 +29,17 @@ RUN tar -xzf /tmp/flye-source.tar.gz -C /opt/flye-src \
         lib/samtools-1.9/htslib-1.9/ \
     && (cd lib/samtools-1.9/htslib-1.9 && autoheader && autoconf -Wno-syntax) \
     && (cd lib/samtools-1.9 && autoheader && autoconf -Wno-syntax) \
+    && HOST_TRIPLET="$(lib/samtools-1.9/htslib-1.9/config.guess)" \
     && if ! (cd lib/samtools-1.9 \
-        && ./configure --without-curses --disable-bz2 --disable-lzma --enable-plugins); then \
+        && ./configure --host="${HOST_TRIPLET}" --without-curses --disable-bz2 --disable-lzma --enable-plugins); then \
         printf '\n===== samtools config.log =====\n' >&2; \
         cat lib/samtools-1.9/config.log >&2 || true; \
         printf '\n===== htslib config.log =====\n' >&2; \
         cat lib/samtools-1.9/htslib-1.9/config.log >&2 || true; \
         exit 1; \
     fi \
+    && make samtools -C lib/samtools-1.9 -j"${JOBS}" \
+    && cp lib/samtools-1.9/samtools bin/flye-samtools \
     && make THREADS="${JOBS}" -j"${JOBS}" \
     && test -x bin/flye-modules \
     && test -x bin/flye-minimap2 \

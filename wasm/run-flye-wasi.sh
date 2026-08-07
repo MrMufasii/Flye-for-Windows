@@ -15,7 +15,7 @@ if [[ ! -f "$MODULE" ]]; then
     exit 2
 fi
 
-mkdir -p "$WORKDIR"
+mkdir -p "$WORKDIR/.tmp"
 WORKDIR="$(cd "$WORKDIR" && pwd)"
 
 # The left side is the path seen by Flye inside the WebAssembly guest;
