@@ -70,7 +70,11 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p "$(dirname "$FLYE_WASM_MODULE")"
-          c2w --target-arch=amd64 "$FLYE_NATIVE_IMAGE" "$FLYE_WASM_MODULE"
+          c2w \
+            --target-arch=amd64 \
+            --build-arg SOURCE_REPO=https://github.com/container2wasm/container2wasm \
+            "$FLYE_NATIVE_IMAGE" \
+            "$FLYE_WASM_MODULE"
           test -s "$FLYE_WASM_MODULE"
           test "$(head -c 4 "$FLYE_WASM_MODULE" | od -An -tx1 | tr -d ' \n')" = "0061736d"
           sha256sum "$FLYE_WASM_MODULE" | tee wasm/dist/SHA256SUMS
