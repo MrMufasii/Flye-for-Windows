@@ -19,9 +19,21 @@ RUN apt-get update \
 
 WORKDIR /opt/flye-src
 COPY ${FLYE_SOURCE_TARBALL} /tmp/flye-source.tar.gz
+# The pinned source archive does not contain every runtime configuration asset.
+# Overlay the repository's complete, version-matched configuration bundle so
+# C++ modules can resolve %include directives and polishing matrices at runtime.
+COPY flye/config/bin_cfg /tmp/flye-bin-cfg
 
 RUN tar -xzf /tmp/flye-source.tar.gz -C /opt/flye-src \
     && rm /tmp/flye-source.tar.gz \
+    && install -d flye/config/bin_cfg \
+    && cp -a /tmp/flye-bin-cfg/. flye/config/bin_cfg/ \
+    && rm -rf /tmp/flye-bin-cfg \
+    && test -s flye/config/bin_cfg/asm_defaults.cfg \
+    && test -s flye/config/bin_cfg/asm_corrected_reads.cfg \
+    && for include in $(awk '$1 == "%include" {print $2}' flye/config/bin_cfg/*.cfg | sort -u); do \
+        test -s "flye/config/bin_cfg/${include}"; \
+    done \
     && sed -i 's/\r$//' bin/flye \
     && find flye -type f -name '*.py' -exec sed -i 's/\r$//' {} + \
     && mkdir -p bin \
@@ -73,6 +85,11 @@ RUN chmod 0755 /opt/flye/bin/flye /opt/flye/bin/flye-* \
     && ln -s /opt/flye/bin/flye-modules /usr/local/bin/flye-modules \
     && ln -s /opt/flye/bin/flye-minimap2 /usr/local/bin/flye-minimap2 \
     && ln -s /opt/flye/bin/flye-samtools /usr/local/bin/flye-samtools \
+    && test -s /opt/flye/flye/config/bin_cfg/asm_defaults.cfg \
+    && test -s /opt/flye/flye/config/bin_cfg/asm_corrected_reads.cfg \
+    && for include in $(awk '$1 == "%include" {print $2}' /opt/flye/flye/config/bin_cfg/*.cfg | sort -u); do \
+        test -s "/opt/flye/flye/config/bin_cfg/${include}"; \
+    done \
     && mkdir -p /work/.tmp \
     && python3 /opt/flye/bin/flye --version
 
