@@ -1,0 +1,97 @@
+name: Diagnose Flye WebAssembly linear memory
+
+on:
+  push:
+    branches:
+      - agent/flye-wasm-complete
+    paths:
+      - .github/workflows/diagnose-flye-wasm-linear-memory.yml
+      - wasm/tools/set_wasm_memory_min.py
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  WASMTIME_VERSION: v33.0.2
+  SOURCE_RUN_ID: "31208076220"
+  FLYE_WASM_LINEAR_MEMORY_MIB: "2560"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download the high-memory native-mode module
+        uses: actions/download-artifact@v4
+        with:
+          name: flye-2.9.6-complete-wasm
+          path: recovered-artifact
+          repository: MrMufasii/Flye-for-Windows
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wasmtime 33.0.2
+        shell: bash
+        run: |
+          set -euxo pipefail
+          archive="wasmtime-${WASMTIME_VERSION}-x86_64-linux.tar.xz"
+          url="https://github.com/bytecodealliance/wasmtime/releases/download/${WASMTIME_VERSION}/${archive}"
+          curl --fail --location --retry 5 --output "/tmp/${archive}" "$url"
+          tar -xJf "/tmp/${archive}" -C /tmp
+          sudo install -m 0755 "/tmp/wasmtime-${WASMTIME_VERSION}-x86_64-linux/wasmtime" /usr/local/bin/wasmtime
+          wasmtime --version
+
+      - name: Pre-grow the module and verify startup
+        shell: bash
+        env:
+          WASMTIME_BACKTRACE_DETAILS: "1"
+        run: |
+          set -euxo pipefail
+          module="$PWD/recovered-artifact/wasm/dist/flye-2.9.6-complete.wasm"
+          test -s "$module"
+
+          python3 wasm/tools/set_wasm_memory_min.py \
+            "$module" \
+            --minimum-mib "$FLYE_WASM_LINEAR_MEMORY_MIB"
+
+          wasmtime -- "$module" -no-stdin /opt/flye/bin/flye --version
+          wasmtime -- "$module" -no-stdin /bin/sh -lc \
+            'grep "^MemTotal:" /proc/meminfo; command -v flye-modules; command -v flye-minimap2; command -v flye-samtools'
+
+      - name: Run a complete assembly in the patched module
+        shell: bash
+        env:
+          WASMTIME_BACKTRACE_DETAILS: "1"
+        run: |
+          set -euxo pipefail
+          module="$PWD/recovered-artifact/wasm/dist/flye-2.9.6-complete.wasm"
+          work="$PWD/diagnostic-work"
+          rm -rf "$work"
+          mkdir -p "$work/.tmp"
+
+          timeout 105m wasmtime run \
+            --dir "$work::/work" \
+            -- \
+            "$module" \
+            -no-stdin \
+            /opt/flye/bin/flye \
+            --pacbio-corr /opt/flye/flye/tests/data/ecoli_500kb_reads_hifi.fastq.gz \
+            --genome-size 500k \
+            --threads 1 \
+            --min-overlap 1000 \
+            --deterministic \
+            --out-dir /work/wasm
+
+          for output in assembly.fasta assembly_graph.gfa assembly_info.txt; do
+            test -s "$work/wasm/$output"
+          done
+          sha256sum \
+            "$work/wasm/assembly.fasta" \
+            "$work/wasm/assembly_graph.gfa" \
+            "$work/wasm/assembly_info.txt"
