@@ -18,14 +18,15 @@ fi
 mkdir -p "$WORKDIR/.tmp"
 WORKDIR="$(cd "$WORKDIR" && pwd)"
 
-# The left side is the path seen by Flye inside the WebAssembly guest;
-# the right side is the host directory exposed through WASI.
+# Wasmtime 33 exposes filesystem preopens on the `run` subcommand. Its
+# mapping syntax is HOST::GUEST, so expose the selected host working directory
+# as /work inside the container2wasm guest.
 #
 # container2wasm's emulated console exits when stdin is already at EOF.
 # Flye does not consume stdin, so use the runtime's documented -no-stdin
 # mode and supply the container command explicitly before Flye's options.
-exec "$WASMTIME" \
-    --mapdir "/work::$WORKDIR" \
+exec "$WASMTIME" run \
+    --dir "$WORKDIR::/work" \
     -- \
     "$MODULE" \
     -no-stdin \

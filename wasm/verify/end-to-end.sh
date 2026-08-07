@@ -23,8 +23,8 @@ docker run --rm \
   --out-dir /work/native
 
 echo "Running the same assembly inside WebAssembly..."
-"$WASMTIME_BIN" \
-  --mapdir "/work::$ROOT" \
+"$WASMTIME_BIN" run \
+  --dir "$ROOT::/work" \
   -- \
   "$MODULE" \
   -no-stdin \
