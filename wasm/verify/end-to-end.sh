@@ -8,8 +8,8 @@ MODULE="${FLYE_WASM_MODULE:-$WASM_DIR/dist/flye-2.9.6-complete.wasm}"
 ROOT="${FLYE_PARITY_DIR:-$WASM_DIR/dist/parity}"
 WASMTIME_BIN="${WASMTIME:-wasmtime}"
 ROOT="$(mkdir -p "$ROOT" && cd "$ROOT" && pwd)"
-rm -rf "$ROOT/native" "$ROOT/wasm"
-mkdir -p "$ROOT/native" "$ROOT/wasm" "$ROOT/.tmp"
+rm -rf "$ROOT/native" "$ROOT/wasm" "$ROOT/.c2w-tmp"
+mkdir -p "$ROOT/native" "$ROOT/wasm" "$ROOT/.tmp" "$ROOT/.c2w-tmp"
 
 READS=/opt/flye/flye/tests/data/ecoli_500kb_reads_hifi.fastq.gz
 COMMON=(--pacbio-corr "$READS" --genome-size 500k --threads 1 --min-overlap 1000 --deterministic)
@@ -25,6 +25,7 @@ docker run --rm \
 echo "Running the same assembly inside WebAssembly..."
 "$WASMTIME_BIN" run \
   --dir "$ROOT::/work" \
+  --dir "$ROOT/.c2w-tmp::/tmp" \
   -- \
   "$MODULE" \
   -no-stdin \

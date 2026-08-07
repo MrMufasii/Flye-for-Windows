@@ -8,7 +8,8 @@ MODULE="${FLYE_WASM_MODULE:-$WASM_DIR/dist/flye-2.9.6-complete.wasm}"
 OUT="${FLYE_VERIFY_DIR:-$WASM_DIR/dist/verification}"
 WASMTIME_BIN="${WASMTIME:-wasmtime}"
 EXPECTED_VM_MEMORY_MB="${FLYE_WASM_VM_MEMORY_MB:-2048}"
-mkdir -p "$OUT"
+C2W_TMP="$OUT/c2w-tmp"
+mkdir -p "$OUT" "$C2W_TMP"
 
 run_logged() {
   local output="$1"
@@ -33,10 +34,22 @@ run_logged() {
   fi
 }
 
+run_wasm_logged() {
+  local output="$1"
+  shift
+  run_logged "$output" \
+    "$WASMTIME_BIN" run \
+    --dir "$C2W_TMP::/tmp" \
+    -- \
+    "$MODULE" \
+    -no-stdin \
+    "$@"
+}
+
 run_logged "$OUT/native-version.txt" \
   docker run --rm "$IMAGE" /opt/flye/bin/flye --version
-run_logged "$OUT/wasm-version.txt" \
-  "$WASMTIME_BIN" -- "$MODULE" -no-stdin /opt/flye/bin/flye --version
+run_wasm_logged "$OUT/wasm-version.txt" \
+  /opt/flye/bin/flye --version
 
 native_version="$(tr -d '\r' <"$OUT/native-version.txt")"
 wasm_version="$(tr -d '\r' <"$OUT/wasm-version.txt")"
@@ -53,21 +66,21 @@ fi
 
 run_logged "$OUT/native-help.txt" \
   docker run --rm "$IMAGE" /opt/flye/bin/flye --help
-run_logged "$OUT/wasm-help.txt" \
-  "$WASMTIME_BIN" -- "$MODULE" -no-stdin /opt/flye/bin/flye --help
+run_wasm_logged "$OUT/wasm-help.txt" \
+  /opt/flye/bin/flye --help
 python3 "$SCRIPT_DIR/cli_parity.py" "$OUT/native-help.txt" "$OUT/wasm-help.txt"
 
 # With no image ENTRYPOINT, the c2w runtime's positional command is the
 # complete process to execute, allowing the bundled toolchain to be checked.
-run_logged "$OUT/wasm-toolchain.txt" \
-  "$WASMTIME_BIN" -- "$MODULE" -no-stdin /bin/sh -lc \
+run_wasm_logged "$OUT/wasm-toolchain.txt" \
+  /bin/sh -lc \
   'set -eu; command -v python3; command -v flye; command -v flye-modules; command -v flye-minimap2; command -v flye-samtools; flye --version'
 cat "$OUT/wasm-toolchain.txt"
 
 # container2wasm v0.8.4 defaults the emulated Linux VM to only 128 MiB. Confirm
 # that the Flye module was built with the requested production memory size.
-run_logged "$OUT/wasm-memory-kib.txt" \
-  "$WASMTIME_BIN" -- "$MODULE" -no-stdin /bin/sh -lc \
+run_wasm_logged "$OUT/wasm-memory-kib.txt" \
+  /bin/sh -lc \
   'while read -r key value unit; do if [ "$key" = "MemTotal:" ]; then printf "%s\n" "$value"; exit 0; fi; done < /proc/meminfo; exit 1'
 
 wasm_memory_kib="$(grep -E '^[0-9]+$' "$OUT/wasm-memory-kib.txt" | tail -n 1 || true)"
