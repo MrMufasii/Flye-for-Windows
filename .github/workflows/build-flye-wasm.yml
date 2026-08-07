@@ -18,6 +18,7 @@ env:
   FLYE_NATIVE_IMAGE: flye-wasm-native:2.9.6
   FLYE_WASM_MODULE: wasm/dist/flye-2.9.6-complete.wasm
   FLYE_WASM_VM_MEMORY_MB: "2048"
+  C2W_OPTIMIZATION_MODE: native
   C2W_VERSION: v0.8.4
   C2W_LINUX_AMD64_SHA256: 1142ab95212578c0c7f666de830de6945f2abbea1713d1e07a7cb04072e00f31
   WASMTIME_VERSION: v33.0.2
@@ -75,6 +76,7 @@ jobs:
             --target-arch=amd64 \
             --build-arg SOURCE_REPO=https://github.com/container2wasm/container2wasm \
             --build-arg "VM_MEMORY_SIZE_MB=${FLYE_WASM_VM_MEMORY_MB}" \
+            --build-arg "OPTIMIZATION_MODE=${C2W_OPTIMIZATION_MODE}" \
             "$FLYE_NATIVE_IMAGE" \
             "$FLYE_WASM_MODULE"
           test -s "$FLYE_WASM_MODULE"
@@ -116,6 +118,7 @@ jobs:
             echo "Flye upstream commit: 886b8c17412cdf3a2868a28237bca6c5ad1da156"
             echo "Repository commit: ${GITHUB_SHA}"
             echo "container2wasm: $(c2w --version 2>&1 || true)"
+            echo "container2wasm optimization mode: ${C2W_OPTIMIZATION_MODE}"
             echo "container2wasm guest memory: ${FLYE_WASM_VM_MEMORY_MB} MiB"
             echo "Wasmtime: $(wasmtime --version 2>&1 || true)"
             echo "Built: $(date --utc --iso-8601=seconds)"
