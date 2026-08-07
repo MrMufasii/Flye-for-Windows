@@ -13,10 +13,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: flye-wasm-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   FLYE_VERSION: "2.9.6"
   FLYE_NATIVE_IMAGE: flye-wasm-native:2.9.6
@@ -98,4 +94,46 @@ jobs:
           bash wasm/verify/cli-smoke.sh
 
       - name: Verify an end-to-end assembly against the native image
-        shellè‰…Í (€€€€€€€ÉÕ¸èð(€€€€€€€€€Í•Ð€µ•Õá¼Á¥Á•™…¥°(€€€€€€€€€‰…Í Ý…Í´½Ù•É¥™ä½•¹µÑ¼µ•¹¹Í ((€€€€€€´¹…µ”è]É¥Ñ”ÁÉ½Ù•¹…¹”(€€€€€€€¥˜è…±Ý…åÌ ¤(€€€€€€€Í¡•±°è‰…Í (€€€€€€€ÉÕ¸èð(€€€€€€€€€Í•Ð€µÔ(€€€€€€€€€µ­‘¥È€µÀÝ…Í´½‘¥ÍÐ(€€€€€€€€€ì(€€€€€€€€€€€•¡¼€‰±å”Ù•ÉÍ¥½¸è€‘í1e}YIM%=9ôˆ(€€€€€€€€€€€•¡¼€‰±å”ÕÁÍÑÉ•…´½µµ¥Ðè€ààÙˆáŒÄÜÐÄÉ‘˜Í„ÈàØá„ÈàÈÌÝ‰„ÙŒÕ…Å‘„ÄÔØˆ(€€€€€€€€€€€•¡¼€‰I•Á½Í¥Ñ½Éä½µµ¥Ðè€‘í%Q!U	}M!ôˆ(€€€€€€€€€€€•¡¼€‰½¹Ñ…¥¹•ÈÉÝ…Í´è€¡ŒÉÜ€´µÙ•ÉÍ¥½¸€Èø˜ÄñðÑÉÕ”¤ˆ(€€€€€€€€€€€•¡¼€‰]…ÍµÑ¥µ”è€¡Ý…ÍµÑ¥µ”€´µÙ•ÉÍ¥½¸€Èø˜ÄñðÑÉÕ”¤ˆ(€€€€€€€€€€€•¡¼€‰	Õ¥±Ðè€¡‘…Ñ”€´µÕÑŒ€´µ¥Í¼´àØÀÄõÍ•½¹‘Ì¤ˆ(€€€€€€€€€ôðÑ•”Ý…Í´½‘¥ÍÐ½AI=Y99¹ÑáÐ(€€€€€€€€€‘½­•È¥¹ÍÁ•Ð€ˆ‘1e}9Q%Y}%5ˆ€øÝ…Í´½‘¥ÍÐ½¹…Ñ¥Ù”µ¥µ…”µ¥¹ÍÁ•Ð¹©Í½¸€Èø½‘•Ø½¹Õ±°ñðÑÉÕ”((€€€€€€´¹…µ”èAÕ‰±¥Í Ñ¡”½µÁ±•Ñ”]•‰ÍÍ•µ‰±äÁ…­…”(€€€€€€€ÕÍ•Ìè…Ñ¥½¹Ì½ÕÁ±½…µ…ÉÑ¥™…ÑØÐ(€€€€€€€Ý¥Ñ è(€€€€€€€€€¹…µ”è™±å”´È¸ä¸Øµ½µÁ±•Ñ”µÝ…Í´(€€€€€€€€€¥˜µ¹¼µ™¥±•Ìµ™½Õ¹è•ÉÉ½È(€€€€€€€€€½µÁÉ•ÍÍ¥½¸µ±•Ù•°è€À(€€€€€€€€€É•Ñ•¹Ñ¥½¸µ‘…åÌè€ÌÀ(€€€€€€€€€Á…Ñ èð(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½™±å”´È¸ä¸Øµ½µÁ±•Ñ”¹Ý…Í´(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½M!ÈÔÙMU55L(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½AI=Y99¹ÑáÐ(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½¹…Ñ¥Ù”µ¥µ…”µ¥¹ÍÁ•Ð¹©Í½¸(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½Ù•É¥™¥…Ñ¥½¸¼¨¨(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½Á…É¥Ñä½¹…Ñ¥Ù”½…ÍÍ•µ‰±ä¹™…ÍÑ„(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½Á…É¥Ñä½¹…Ñ¥Ù”½…ÍÍ•µ‰±å}É…Á ¹™„(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½Á…É¥Ñä½¹…Ñ¥Ù”½…ÍÍ•µ‰±å}¥¹™¼¹ÑáÐ(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½Á…É¥Ñä½Ý…Í´½…ÍÍ•µ‰±ä¹™…ÍÑ„(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½Á…É¥Ñä½Ý…Í´½…ÍÍ•µ‰±å}É…Á ¹™„(€€€€€€€€€€€Ý…Í´½‘¥ÍÐ½Á…É¥Ñä½Ý…Í´½…ÍÍ•µ‰±å}¥¹™¼¹ÑáÐ(€€€€€€€€€€€Ý…Í´½ÉÕ¸µ™±å”µÝ…Í¤¹Í (€€€€€€€€€€€Ý…Í´½I5¹µ(€€€€€€€€€€€1%9M
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash wasm/verify/end-to-end.sh
+
+      - name: Write provenance
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          mkdir -p wasm/dist
+          {
+            echo "Flye version: ${FLYE_VERSION}"
+            echo "Flye upstream commit: 886b8c17412cdf3a2868a28237bca6c5ad1da156"
+            echo "Repository commit: ${GITHUB_SHA}"
+            echo "container2wasm: $(c2w --version 2>&1 || true)"
+            echo "Wasmtime: $(wasmtime --version 2>&1 || true)"
+            echo "Built: $(date --utc --iso-8601=seconds)"
+          } | tee wasm/dist/PROVENANCE.txt
+          docker inspect "$FLYE_NATIVE_IMAGE" > wasm/dist/native-image-inspect.json 2>/dev/null || true
+
+      - name: Publish the complete WebAssembly package
+        uses: actions/upload-artifact@v4
+        with:
+          name: flye-2.9.6-complete-wasm
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+          path: |
+            wasm/dist/flye-2.9.6-complete.wasm
+            wasm/dist/SHA256SUMS
+            wasm/dist/PROVENANCE.txt
+            wasm/dist/native-image-inspect.json
+            wasm/dist/verification/**
+            wasm/dist/parity/native/assembly.fasta
+            wasm/dist/parity/native/assembly_graph.gfa
+            wasm/dist/parity/native/assembly_info.txt
+            wasm/dist/parity/wasm/assembly.fasta
+            wasm/dist/parity/wasm/assembly_graph.gfa
+            wasm/dist/parity/wasm/assembly_info.txt
+            wasm/run-flye-wasi.sh
+            wasm/README.md
+            LICENSE
