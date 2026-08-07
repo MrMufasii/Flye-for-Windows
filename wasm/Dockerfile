@@ -22,6 +22,8 @@ COPY ${FLYE_SOURCE_TARBALL} /tmp/flye-source.tar.gz
 
 RUN tar -xzf /tmp/flye-source.tar.gz -C /opt/flye-src \
     && rm /tmp/flye-source.tar.gz \
+    && sed -i 's/\r$//' bin/flye \
+    && find flye -type f -name '*.py' -exec sed -i 's/\r$//' {} + \
     && mkdir -p bin \
     && install -m 0755 \
         /usr/share/autoconf/build-aux/config.guess \
