@@ -30,14 +30,6 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Reclaim runner disk space
-        shell: bash
-        run: |
-          set -euxo pipefail
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
-          docker system prune --all --force || true
-          df -h
-
       - name: Build the pinned native Flye image
         shell: bash
         run: |
@@ -49,6 +41,14 @@ jobs:
             --file wasm/Dockerfile \
             .
           docker run --rm "$FLYE_NATIVE_IMAGE" --version
+
+      - name: Reclaim runner disk space
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
+          docker system prune --all --force || true
+          df -h
 
       - name: Install container2wasm
         shell: bash

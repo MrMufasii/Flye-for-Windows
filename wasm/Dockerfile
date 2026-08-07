@@ -25,6 +25,14 @@ RUN tar -xzf /tmp/flye-source.tar.gz -C /opt/flye-src \
     && mkdir -p bin \
     && (cd lib/samtools-1.9/htslib-1.9 && autoheader && autoconf -Wno-syntax) \
     && (cd lib/samtools-1.9 && autoheader && autoconf -Wno-syntax) \
+    && if ! (cd lib/samtools-1.9 \
+        && ./configure --without-curses --disable-bz2 --disable-lzma --enable-plugins); then \
+        printf '\n===== samtools config.log =====\n' >&2; \
+        cat lib/samtools-1.9/config.log >&2 || true; \
+        printf '\n===== htslib config.log =====\n' >&2; \
+        cat lib/samtools-1.9/htslib-1.9/config.log >&2 || true; \
+        exit 1; \
+    fi \
     && make THREADS="${JOBS}" -j"${JOBS}" \
     && test -x bin/flye-modules \
     && test -x bin/flye-minimap2 \
