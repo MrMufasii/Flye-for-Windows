@@ -41,7 +41,7 @@ jobs:
           sudo install -m 0755 /tmp/wasmtime-v33.0.2-x86_64-linux/wasmtime /usr/local/bin/wasmtime
           wasmtime --version
 
-      - name: Exercise Wasmtime argument boundaries
+      - name: Exercise container command forwarding
         shell: bash
         run: |
           set -uo pipefail
@@ -65,10 +65,13 @@ jobs:
             sed -n '1,120p' "$out"
           }
 
-          try direct-runtime-help wasmtime -- "$module" --help
-          try direct-flye-version wasmtime -- "$module" -- --version
-          try run-flye-version wasmtime run "$module" -- --version
-          try direct-flye-help wasmtime -- "$module" -- --help
-          try run-flye-help wasmtime run "$module" -- --help
-          try explicit-entrypoint wasmtime -- "$module" --entrypoint=/opt/flye/bin/flye -- --version
-          try clean-env env -i PATH="$PATH" wasmtime -- "$module" -- --version
+          # The generated module has a container-runtime CLI in front of the
+          # image entrypoint. A leading Flye option is therefore ambiguous;
+          # exercise the supported explicit COMMAND form from the c2w usage.
+          try runtime-help wasmtime -- "$module" --help
+          try leading-option wasmtime -- "$module" -- --version
+          try absolute-flye-command wasmtime -- "$module" /opt/flye/bin/flye --version
+          try path-flye-command wasmtime -- "$module" flye --version
+          try absolute-flye-help wasmtime -- "$module" /opt/flye/bin/flye --help
+          try shell-command wasmtime -- "$module" /bin/sh -lc \
+            'set -eu; command -v python3; command -v flye; command -v flye-modules; command -v flye-minimap2; command -v flye-samtools; flye --version'
