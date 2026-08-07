@@ -23,6 +23,44 @@ def replace_once(text: str, old: str, new: str, description: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_once_in_region(
+    text: str,
+    *,
+    start_marker: str,
+    end_marker: str,
+    old: str,
+    new: str,
+    description: str,
+) -> str:
+    """Replace one token only inside a uniquely delimited Dockerfile stage."""
+    start_count = text.count(start_marker)
+    end_count = text.count(end_marker)
+    if start_count != 1 or end_count != 1:
+        raise SystemExit(
+            f"cannot locate {description}: start matches={start_count}, "
+            f"end matches={end_count}"
+        )
+
+    start = text.index(start_marker)
+    end = text.index(end_marker, start + len(start_marker))
+    region = text[start:end]
+    count = region.count(old)
+    if count != 1:
+        raise SystemExit(
+            f"cannot patch {description}: expected exactly one match in the "
+            f"WASI Bochs stage, found {count}"
+        )
+
+    patched_region = region.replace(old, new, 1)
+    return text[:start] + patched_region + text[end:]
+
+
+def get_region(text: str, start_marker: str, end_marker: str) -> str:
+    start = text.index(start_marker)
+    end = text.index(end_marker, start + len(start_marker))
+    return text[start:end]
+
+
 def patch_dockerfile(text: str) -> str:
     text = replace_once(
         text,
@@ -50,17 +88,23 @@ RUN sed -i 's|^megs: ${MEMORY_SIZE}$|memory: guest=${MEMORY_SIZE}, host=${HOST_M
         "Bochs guest/host memory configuration",
     )
 
-    text = replace_once(
+    # The upstream Dockerfile contains two Bochs builds: the WASI module used
+    # by this target and an unrelated Emscripten browser build. Patch only the
+    # WASI stage; retaining the Emscripten flag is intentional.
+    wasi_start = "FROM rust:1.74.1-bullseye AS bochs-dev-common\n"
+    wasi_end = "FROM bochs-dev-common AS bochs-dev-native\n"
+    text = replace_once_in_region(
         text,
-        "--disable-large-ramfile",
-        "--enable-large-ramfile",
-        "Bochs large-RAM-file configure flag",
+        start_marker=wasi_start,
+        end_marker=wasi_end,
+        old="--disable-large-ramfile",
+        new="--enable-large-ramfile",
+        description="WASI Bochs large-RAM-file configure flag",
     )
 
     required = (
         "ARG VM_HOST_MEMORY_SIZE_MB=1024",
         "ARG VM_HOST_MEMORY_SIZE_MB",
-        "--enable-large-ramfile",
         "memory: guest=${MEMORY_SIZE}, host=${HOST_MEMORY_SIZE}, block_size=1024",
         "HOST_MEMORY_SIZE=$VM_HOST_MEMORY_SIZE_MB",
     )
@@ -69,8 +113,16 @@ RUN sed -i 's|^megs: ${MEMORY_SIZE}$|memory: guest=${MEMORY_SIZE}, host=${HOST_M
         raise SystemExit(
             "patched Dockerfile is missing required markers: " + ", ".join(missing)
         )
-    if "--disable-large-ramfile" in text:
-        raise SystemExit("patched Dockerfile still disables large-RAM-file support")
+
+    wasi_region = get_region(text, wasi_start, wasi_end)
+    if wasi_region.count("--enable-large-ramfile") != 1:
+        raise SystemExit(
+            "patched WASI Bochs stage does not enable large-RAM-file exactly once"
+        )
+    if "--disable-large-ramfile" in wasi_region:
+        raise SystemExit(
+            "patched WASI Bochs stage still disables large-RAM-file support"
+        )
     return text
 
 
@@ -90,7 +142,7 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(patched, encoding="utf-8")
     print(
-        "Patched container2wasm Dockerfile: enabled Bochs large-RAM-file "
+        "Patched container2wasm Dockerfile: enabled WASI Bochs large-RAM-file "
         "support and split guest RAM from the wasm32 host working set."
     )
     return 0
