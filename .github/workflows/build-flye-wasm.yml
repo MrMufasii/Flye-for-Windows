@@ -1,0 +1,137 @@
+name: Build complete Flye WebAssembly
+
+on:
+  push:
+    branches:
+      - agent/flye-wasm-complete
+    paths:
+      - .github/workflows/build-flye-wasm.yml
+      - wasm/**
+      - scripts/flye-patch/flye-src-886b8c1.tar.gz
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLYE_VERSION: "2.9.6"
+  FLYE_NATIVE_IMAGE: flye-wasm-native:2.9.6
+  FLYE_WASM_MODULE: wasm/dist/flye-2.9.6-complete.wasm
+  C2W_VERSION: v0.8.4
+  C2W_LINUX_AMD64_SHA256: 1142ab95212578c0c7f666de830de6945f2abbea1713d1e07a7cb04072e00f31
+  WASMTIME_VERSION: v45.0.0
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Reclaim runner disk space
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
+          docker system prune --all --force || true
+          df -h
+
+      - name: Build the pinned native Flye image
+        shell: bash
+        run: |
+          set -euxo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --progress plain \
+            --tag "$FLYE_NATIVE_IMAGE" \
+            --file wasm/Dockerfile \
+            .
+          docker run --rm "$FLYE_NATIVE_IMAGE" --version
+
+      - name: Install container2wasm
+        shell: bash
+        run: |
+          set -euxo pipefail
+          archive="container2wasm-${C2W_VERSION}-linux-amd64.tar.gz"
+          url="https://github.com/container2wasm/container2wasm/releases/download/${C2W_VERSION}/${archive}"
+          curl --fail --location --retry 5 --output "/tmp/${archive}" "$url"
+          echo "${C2W_LINUX_AMD64_SHA256}  /tmp/${archive}" | sha256sum --check --strict
+          tar -xzf "/tmp/${archive}" -C /tmp
+          sudo install -m 0755 /tmp/c2w /usr/local/bin/c2w
+          sudo install -m 0755 /tmp/c2w-net /usr/local/bin/c2w-net
+          c2w --version
+
+      - name: Convert the complete image to WASI WebAssembly
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$(dirname "$FLYE_WASM_MODULE")"
+          c2w --target-arch=amd64 "$FLYE_NATIVE_IMAGE" "$FLYE_WASM_MODULE"
+          test -s "$FLYE_WASM_MODULE"
+          test "$(head -c 4 "$FLYE_WASM_MODULE" | od -An -tx1 | tr -d ' \n')" = "0061736d"
+          sha256sum "$FLYE_WASM_MODULE" | tee wasm/dist/SHA256SUMS
+          ls -lh "$FLYE_WASM_MODULE"
+
+      - name: Install Wasmtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          archive="wasmtime-${WASMTIME_VERSION}-x86_64-linux.tar.xz"
+          url="https://github.com/bytecodealliance/wasmtime/releases/download/${WASMTIME_VERSION}/${archive}"
+          curl --fail --location --retry 5 --output "/tmp/${archive}" "$url"
+          tar -xJf "/tmp/${archive}" -C /tmp
+          sudo install -m 0755 "/tmp/wasmtime-${WASMTIME_VERSION}-x86_64-linux/wasmtime" /usr/local/bin/wasmtime
+          wasmtime --version
+
+      - name: Verify CLI and bundled executable parity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash wasm/verify/cli-smoke.sh
+
+      - name: Verify an end-to-end assembly against the native image
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash wasm/verify/end-to-end.sh
+
+      - name: Write provenance
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          mkdir -p wasm/dist
+          {
+            echo "Flye version: ${FLYE_VERSION}"
+            echo "Flye upstream commit: 886b8c17412cdf3a2868a28237bca6c5ad1da156"
+            echo "Repository commit: ${GITHUB_SHA}"
+            echo "container2wasm: $(c2w --version 2>&1 || true)"
+            echo "Wasmtime: $(wasmtime --version 2>&1 || true)"
+            echo "Built: $(date --utc --iso-8601=seconds)"
+          } | tee wasm/dist/PROVENANCE.txt
+          docker inspect "$FLYE_NATIVE_IMAGE" > wasm/dist/native-image-inspect.json 2>/dev/null || true
+
+      - name: Publish the complete WebAssembly package
+        uses: actions/upload-artifact@v4
+        with:
+          name: flye-2.9.6-complete-wasm
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+          path: |
+            wasm/dist/flye-2.9.6-complete.wasm
+            wasm/dist/SHA256SUMS
+            wasm/dist/PROVENANCE.txt
+            wasm/dist/native-image-inspect.json
+            wasm/dist/verification/**
+            wasm/dist/parity/native/assembly.fasta
+            wasm/dist/parity/native/assembly_graph.gfa
+            wasm/dist/parity/native/assembly_info.txt
+            wasm/dist/parity/wasm/assembly.fasta
+            wasm/dist/parity/wasm/assembly_graph.gfa
+            wasm/dist/parity/wasm/assembly_info.txt
+            wasm/run-flye-wasi.sh
+            wasm/README.md
+            LICENSE
