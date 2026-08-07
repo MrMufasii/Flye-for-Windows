@@ -83,7 +83,12 @@ run_wasm_logged "$OUT/wasm-memory-kib.txt" \
   /bin/sh -lc \
   'while read -r key value unit; do if [ "$key" = "MemTotal:" ]; then printf "%s\n" "$value"; exit 0; fi; done < /proc/meminfo; exit 1'
 
-wasm_memory_kib="$(grep -E '^[0-9]+$' "$OUT/wasm-memory-kib.txt" | tail -n 1 || true)"
+# The emulated serial console writes CRLF line endings. Remove carriage returns
+# before applying the numeric-only check, just as the version checks above do.
+wasm_memory_kib="$(
+  tr -d '\r' <"$OUT/wasm-memory-kib.txt" |
+    awk '/^[0-9]+$/ { value = $0 } END { if (value != "") print value }'
+)"
 if [[ ! "$wasm_memory_kib" =~ ^[0-9]+$ ]]; then
   printf 'Could not parse guest MemTotal from %s:\n' "$OUT/wasm-memory-kib.txt" >&2
   cat "$OUT/wasm-memory-kib.txt" >&2
