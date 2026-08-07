@@ -18,6 +18,7 @@ env:
   FLYE_NATIVE_IMAGE: flye-wasm-native:2.9.6
   FLYE_WASM_MODULE: wasm/dist/flye-2.9.6-complete.wasm
   FLYE_WASM_VM_MEMORY_MB: "2048"
+  FLYE_WASM_VM_HOST_MEMORY_MB: "1024"
   C2W_OPTIMIZATION_MODE: native
   C2W_VERSION: v0.8.4
   C2W_LINUX_AMD64_SHA256: 1142ab95212578c0c7f666de830de6945f2abbea1713d1e07a7cb04072e00f31
@@ -67,15 +68,38 @@ jobs:
           sudo install -m 0755 /tmp/c2w-net /usr/local/bin/c2w-net
           c2w --version
 
+      - name: Prepare the Flye high-memory container2wasm builder
+        shell: bash
+        run: |
+          set -euxo pipefail
+          (( FLYE_WASM_VM_MEMORY_MB > 0 ))
+          (( FLYE_WASM_VM_HOST_MEMORY_MB > 0 ))
+          (( FLYE_WASM_VM_HOST_MEMORY_MB < FLYE_WASM_VM_MEMORY_MB ))
+
+          mkdir -p wasm/dist
+          upstream=/tmp/container2wasm-upstream.Dockerfile
+          patched=wasm/dist/container2wasm-flye.Dockerfile
+
+          c2w --show-dockerfile > "$upstream"
+          python3 wasm/tools/patch_c2w_large_ram.py "$upstream" "$patched"
+
+          grep -F -- '--enable-large-ramfile' "$patched"
+          grep -F -- 'memory: guest=${MEMORY_SIZE}, host=${HOST_MEMORY_SIZE}, block_size=1024' "$patched"
+          test "$(grep -c -- '--enable-large-ramfile' "$patched")" = 1
+          test "$(grep -c -- 'ARG VM_HOST_MEMORY_SIZE_MB' "$patched")" -ge 2
+          sha256sum "$patched" | tee wasm/dist/container2wasm-flye.Dockerfile.sha256
+
       - name: Convert the complete image to WASI WebAssembly
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p "$(dirname "$FLYE_WASM_MODULE")"
           c2w \
+            --dockerfile wasm/dist/container2wasm-flye.Dockerfile \
             --target-arch=amd64 \
             --build-arg SOURCE_REPO=https://github.com/container2wasm/container2wasm \
             --build-arg "VM_MEMORY_SIZE_MB=${FLYE_WASM_VM_MEMORY_MB}" \
+            --build-arg "VM_HOST_MEMORY_SIZE_MB=${FLYE_WASM_VM_HOST_MEMORY_MB}" \
             --build-arg "OPTIMIZATION_MODE=${C2W_OPTIMIZATION_MODE}" \
             "$FLYE_NATIVE_IMAGE" \
             "$FLYE_WASM_MODULE"
@@ -120,6 +144,8 @@ jobs:
             echo "container2wasm: $(c2w --version 2>&1 || true)"
             echo "container2wasm optimization mode: ${C2W_OPTIMIZATION_MODE}"
             echo "container2wasm guest memory: ${FLYE_WASM_VM_MEMORY_MB} MiB"
+            echo "container2wasm in-memory guest backing: ${FLYE_WASM_VM_HOST_MEMORY_MB} MiB"
+            echo "container2wasm overflow backing: Bochs large-RAM-file"
             echo "Wasmtime: $(wasmtime --version 2>&1 || true)"
             echo "Built: $(date --utc --iso-8601=seconds)"
           } | tee wasm/dist/PROVENANCE.txt
@@ -138,6 +164,8 @@ jobs:
             wasm/dist/SHA256SUMS
             wasm/dist/PROVENANCE.txt
             wasm/dist/native-image-inspect.json
+            wasm/dist/container2wasm-flye.Dockerfile
+            wasm/dist/container2wasm-flye.Dockerfile.sha256
             wasm/dist/verification/**
             wasm/dist/parity/native/assembly.fasta
             wasm/dist/parity/native/assembly_graph.gfa

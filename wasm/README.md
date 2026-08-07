@@ -12,8 +12,8 @@ container2wasm `v0.8.4`.
 
 ## Build
 
-Requirements: Docker with Buildx, `c2w` v0.8.4, GNU Make, and enough local disk for
-the image and generated module.
+Requirements: Docker with Buildx, `c2w` v0.8.4, Python 3, GNU Make, and enough
+local disk for the image and generated module.
 
 ```bash
 make -C wasm image
@@ -21,17 +21,30 @@ make -C wasm wasm
 make -C wasm verify
 ```
 
-The build configures the emulated Linux guest with 2048 MiB of RAM instead of
-container2wasm's 128 MiB default. Override it for another build with:
+The generated Linux guest exposes 2048 MiB of RAM. To keep the Bochs emulator
+inside wasm32's addressable range, the build enables Bochs large-RAM-file support
+and uses a 1024 MiB in-memory working set; guest pages beyond that working set are
+paged through Bochs' temporary RAM backing file. This preserves the full 2048 MiB
+guest-visible memory without requiring one contiguous 2 GiB WebAssembly allocation.
+
+The values are reproducible and configurable at conversion time:
 
 ```bash
-make -C wasm wasm VM_MEMORY_SIZE_MB=3072
+make -C wasm wasm \
+  VM_MEMORY_SIZE_MB=2048 \
+  VM_HOST_MEMORY_SIZE_MB=1024
 ```
+
+`VM_HOST_MEMORY_SIZE_MB` must be positive and lower than
+`VM_MEMORY_SIZE_MB`. The build uses container2wasm's `native` initialization
+mode, avoiding a multi-gigabyte Wizer snapshot while retaining the complete
+container filesystem and command environment.
 
 GitHub Actions performs the same build, verifies the configured guest memory, runs
 CLI parity checks, runs Flye's bundled 500 kb end-to-end assembly both natively and
 inside WASM, compares all principal assembly products, and publishes
-`flye-2.9.6-complete.wasm` as an artifact.
+`flye-2.9.6-complete.wasm` as an artifact. The exact patched container2wasm
+Dockerfile and its checksum are included with the artifact.
 
 ## Run
 
