@@ -23,10 +23,12 @@ COPY ${FLYE_SOURCE_TARBALL} /tmp/flye-source.tar.gz
 RUN tar -xzf /tmp/flye-source.tar.gz -C /opt/flye-src \
     && rm /tmp/flye-source.tar.gz \
     && mkdir -p bin \
-    && install -m 0644 \
+    && install -m 0755 \
         /usr/share/autoconf/build-aux/config.guess \
+        lib/samtools-1.9/htslib-1.9/config.guess \
+    && install -m 0644 \
         /usr/share/autoconf/build-aux/config.sub \
-        lib/samtools-1.9/htslib-1.9/ \
+        lib/samtools-1.9/htslib-1.9/config.sub \
     && (cd lib/samtools-1.9/htslib-1.9 && autoheader && autoconf -Wno-syntax) \
     && (cd lib/samtools-1.9 && autoheader && autoconf -Wno-syntax) \
     && HOST_TRIPLET="$(lib/samtools-1.9/htslib-1.9/config.guess)" \
