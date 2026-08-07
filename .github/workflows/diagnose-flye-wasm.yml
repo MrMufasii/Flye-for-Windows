@@ -41,7 +41,7 @@ jobs:
           sudo install -m 0755 /tmp/wasmtime-v33.0.2-x86_64-linux/wasmtime /usr/local/bin/wasmtime
           wasmtime --version
 
-      - name: Exercise container command forwarding
+      - name: Exercise non-interactive container execution
         shell: bash
         run: |
           set -uo pipefail
@@ -65,13 +65,12 @@ jobs:
             sed -n '1,120p' "$out"
           }
 
-          # The generated module has a container-runtime CLI in front of the
-          # image entrypoint. A leading Flye option is therefore ambiguous;
-          # exercise the supported explicit COMMAND form from the c2w usage.
-          try runtime-help wasmtime -- "$module" --help
-          try leading-option wasmtime -- "$module" -- --version
-          try absolute-flye-command wasmtime -- "$module" /opt/flye/bin/flye --version
-          try path-flye-command wasmtime -- "$module" flye --version
-          try absolute-flye-help wasmtime -- "$module" /opt/flye/bin/flye --help
-          try shell-command wasmtime -- "$module" /bin/sh -lc \
+          # container2wasm's console exits when stdin is EOF. CI is
+          # non-interactive, so verify its documented -no-stdin mode.
+          try no-stdin-default wasmtime -- "$module" -no-stdin
+          try no-stdin-flye-version wasmtime -- "$module" -no-stdin /opt/flye/bin/flye --version
+          try no-stdin-path-version wasmtime -- "$module" -no-stdin flye --version
+          try no-stdin-flye-help wasmtime -- "$module" -no-stdin /opt/flye/bin/flye --help
+          try no-stdin-shell wasmtime -- "$module" -no-stdin /bin/sh -lc \
             'set -eu; command -v python3; command -v flye; command -v flye-modules; command -v flye-minimap2; command -v flye-samtools; flye --version'
+          try piped-newline bash -lc 'printf "\n" | timeout 120s wasmtime -- "$0" /opt/flye/bin/flye --version' "$module"
