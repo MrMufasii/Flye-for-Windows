@@ -7,6 +7,7 @@ IMAGE="${FLYE_NATIVE_IMAGE:-flye-wasm-native:2.9.6}"
 MODULE="${FLYE_WASM_MODULE:-$WASM_DIR/dist/flye-2.9.6-complete.wasm}"
 OUT="${FLYE_VERIFY_DIR:-$WASM_DIR/dist/verification}"
 WASMTIME_BIN="${WASMTIME:-wasmtime}"
+EXPECTED_VM_MEMORY_MB="${FLYE_WASM_VM_MEMORY_MB:-2048}"
 mkdir -p "$OUT"
 
 run_logged() {
@@ -62,3 +63,25 @@ run_logged "$OUT/wasm-toolchain.txt" \
   "$WASMTIME_BIN" -- "$MODULE" -no-stdin /bin/sh -lc \
   'set -eu; command -v python3; command -v flye; command -v flye-modules; command -v flye-minimap2; command -v flye-samtools; flye --version'
 cat "$OUT/wasm-toolchain.txt"
+
+# container2wasm v0.8.4 defaults the emulated Linux VM to only 128 MiB. Confirm
+# that the Flye module was built with the requested production memory size.
+run_logged "$OUT/wasm-memory-kib.txt" \
+  "$WASMTIME_BIN" -- "$MODULE" -no-stdin /bin/sh -lc \
+  'while read -r key value unit; do if [ "$key" = "MemTotal:" ]; then printf "%s\n" "$value"; exit 0; fi; done < /proc/meminfo; exit 1'
+
+wasm_memory_kib="$(grep -E '^[0-9]+$' "$OUT/wasm-memory-kib.txt" | tail -n 1 || true)"
+if [[ ! "$wasm_memory_kib" =~ ^[0-9]+$ ]]; then
+  printf 'Could not parse guest MemTotal from %s:\n' "$OUT/wasm-memory-kib.txt" >&2
+  cat "$OUT/wasm-memory-kib.txt" >&2
+  exit 1
+fi
+
+minimum_memory_kib=$((EXPECTED_VM_MEMORY_MB * 1024 * 9 / 10))
+if (( wasm_memory_kib < minimum_memory_kib )); then
+  printf 'WASM guest memory is too small: %s KiB; expected approximately %s MiB.\n' \
+    "$wasm_memory_kib" "$EXPECTED_VM_MEMORY_MB" >&2
+  exit 1
+fi
+printf 'WASM guest memory: %s KiB (configured: %s MiB)\n' \
+  "$wasm_memory_kib" "$EXPECTED_VM_MEMORY_MB"

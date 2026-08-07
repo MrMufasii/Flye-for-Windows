@@ -32,4 +32,23 @@ echo "Running the same assembly inside WebAssembly..."
   "${COMMON[@]}" \
   --out-dir /work/wasm
 
+# container2wasm currently returns success after the emulated VM shuts down even
+# when a process inside the guest failed. Validate Flye's products explicitly so
+# the original Flye log, rather than a secondary Python FileNotFoundError, is
+# reported by CI.
+missing=0
+for output in assembly.fasta assembly_graph.gfa assembly_info.txt; do
+  if [[ ! -s "$ROOT/wasm/$output" ]]; then
+    printf 'missing or empty WASM assembly product: %s\n' "$ROOT/wasm/$output" >&2
+    missing=1
+  fi
+done
+if (( missing != 0 )); then
+  if [[ -f "$ROOT/wasm/flye.log" ]]; then
+    printf '\n===== WASM Flye log (last 200 lines) =====\n' >&2
+    tail -n 200 "$ROOT/wasm/flye.log" >&2
+  fi
+  exit 1
+fi
+
 python3 "$SCRIPT_DIR/assembly_parity.py" "$ROOT/native" "$ROOT/wasm"

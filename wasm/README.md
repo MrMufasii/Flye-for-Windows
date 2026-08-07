@@ -21,9 +21,17 @@ make -C wasm wasm
 make -C wasm verify
 ```
 
-GitHub Actions performs the same build, runs CLI parity checks, runs Flye's bundled
-500 kb end-to-end assembly both natively and inside WASM, compares all principal
-assembly products, and publishes `flye-2.9.6-complete.wasm` as an artifact.
+The build configures the emulated Linux guest with 2048 MiB of RAM instead of
+container2wasm's 128 MiB default. Override it for another build with:
+
+```bash
+make -C wasm wasm VM_MEMORY_SIZE_MB=3072
+```
+
+GitHub Actions performs the same build, verifies the configured guest memory, runs
+CLI parity checks, runs Flye's bundled 500 kb end-to-end assembly both natively and
+inside WASM, compares all principal assembly products, and publishes
+`flye-2.9.6-complete.wasm` as an artifact.
 
 ## Run
 
