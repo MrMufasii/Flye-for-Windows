@@ -11,6 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 env:
@@ -25,9 +26,10 @@ env:
   WASMTIME_VERSION: v33.0.2
 
 jobs:
-  build-and-verify:
+  build-and-smoke:
+    name: Build module and verify CLI parity
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 240
 
     steps:
       - name: Check out source
@@ -125,13 +127,7 @@ jobs:
           set -euxo pipefail
           bash wasm/verify/cli-smoke.sh
 
-      - name: Verify an end-to-end assembly against the native image
-        shell: bash
-        run: |
-          set -euxo pipefail
-          bash wasm/verify/end-to-end.sh
-
-      - name: Write provenance
+      - name: Write build provenance
         if: always()
         shell: bash
         run: |
@@ -151,12 +147,12 @@ jobs:
           } | tee wasm/dist/PROVENANCE.txt
           docker inspect "$FLYE_NATIVE_IMAGE" > wasm/dist/native-image-inspect.json 2>/dev/null || true
 
-      - name: Publish the complete WebAssembly package
+      - name: Publish the complete WebAssembly package before the long assembly test
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flye-2.9.6-complete-wasm
-          if-no-files-found: error
+          if-no-files-found: warn
           compression-level: 0
           retention-days: 30
           path: |
@@ -167,12 +163,125 @@ jobs:
             wasm/dist/container2wasm-flye.Dockerfile
             wasm/dist/container2wasm-flye.Dockerfile.sha256
             wasm/dist/verification/**
-            wasm/dist/parity/native/assembly.fasta
-            wasm/dist/parity/native/assembly_graph.gfa
-            wasm/dist/parity/native/assembly_info.txt
-            wasm/dist/parity/wasm/assembly.fasta
-            wasm/dist/parity/wasm/assembly_graph.gfa
-            wasm/dist/parity/wasm/assembly_info.txt
             wasm/run-flye-wasi.sh
             wasm/README.md
             LICENSE
+
+  assembly-parity:
+    name: Verify native versus WebAssembly assembly
+    needs: build-and-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download the verified WebAssembly package
+        uses: actions/download-artifact@v4
+        with:
+          name: flye-2.9.6-complete-wasm
+          path: .
+
+      - name: Validate the downloaded module
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -s "$FLYE_WASM_MODULE"
+          test "$(head -c 4 "$FLYE_WASM_MODULE" | od -An -tx1 | tr -d ' \n')" = "0061736d"
+          sha256sum --check wasm/dist/SHA256SUMS
+
+      - name: Build the pinned native Flye baseline image
+        shell: bash
+        run: |
+          set -euxo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --progress plain \
+            --tag "$FLYE_NATIVE_IMAGE" \
+            --file wasm/Dockerfile \
+            .
+          docker run --rm "$FLYE_NATIVE_IMAGE" /opt/flye/bin/flye --version
+
+      - name: Reclaim disk and add emergency swap
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
+          docker builder prune --all --force || true
+          docker image prune --force || true
+          docker image inspect "$FLYE_NATIVE_IMAGE" >/dev/null
+
+          if ! sudo swapon --show=NAME --noheadings | grep -q .; then
+            sudo fallocate -l 8G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            if ! sudo swapon /swapfile; then
+              echo "warning: this runner does not permit enabling swap" >&2
+            fi
+          fi
+
+          free -h
+          sudo swapon --show || true
+          df -h
+
+      - name: Install Wasmtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          archive="wasmtime-${WASMTIME_VERSION}-x86_64-linux.tar.xz"
+          url="https://github.com/bytecodealliance/wasmtime/releases/download/${WASMTIME_VERSION}/${archive}"
+          curl --fail --location --retry 5 --output "/tmp/${archive}" "$url"
+          tar -xJf "/tmp/${archive}" -C /tmp
+          sudo install -m 0755 "/tmp/wasmtime-${WASMTIME_VERSION}-x86_64-linux/wasmtime" /usr/local/bin/wasmtime
+          wasmtime --version
+
+      - name: Verify an end-to-end assembly against the native image
+        shell: bash
+        env:
+          WASMTIME_BACKTRACE_DETAILS: "1"
+        run: |
+          set -euo pipefail
+          diagnostics=wasm/dist/parity/runner-diagnostics.log
+          mkdir -p "$(dirname "$diagnostics")"
+
+          heartbeat() {
+            while :; do
+              printf '\n===== runner heartbeat %s =====\n' "$(date --utc --iso-8601=seconds)"
+              free -m || true
+              df -h / "$PWD/wasm/dist" || true
+              cat /proc/pressure/memory 2>/dev/null || true
+              cat /proc/pressure/io 2>/dev/null || true
+              ps -eo pid,ppid,ni,stat,%cpu,%mem,rss,vsz,comm,args --sort=-rss | sed -n '1,12p' || true
+              sleep 30
+            done
+          }
+
+          heartbeat > >(tee -a "$diagnostics") 2>&1 &
+          heartbeat_pid=$!
+          cleanup() {
+            kill "$heartbeat_pid" 2>/dev/null || true
+            wait "$heartbeat_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT INT TERM
+
+          if command -v ionice >/dev/null 2>&1; then
+            ionice -c 3 nice -n 10 \
+              timeout --signal=TERM --kill-after=5m 240m \
+              bash wasm/verify/end-to-end.sh
+          else
+            nice -n 10 \
+              timeout --signal=TERM --kill-after=5m 240m \
+              bash wasm/verify/end-to-end.sh
+          fi
+
+      - name: Publish assembly parity results and runner diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flye-2.9.6-assembly-parity
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 30
+          path: |
+            wasm/dist/parity/**
