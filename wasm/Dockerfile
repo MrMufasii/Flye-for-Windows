@@ -23,6 +23,10 @@ COPY ${FLYE_SOURCE_TARBALL} /tmp/flye-source.tar.gz
 # Overlay the repository's complete, version-matched configuration bundle so
 # C++ modules can resolve %include directives and polishing matrices at runtime.
 COPY flye/config/bin_cfg /tmp/flye-bin-cfg
+# Overlay the single-worker consensus implementation used by the complete WASM
+# image. It bypasses multiprocessing.Manager when --threads 1 is requested,
+# because container2wasm's mounted filesystem cannot host Manager's Unix socket.
+COPY flye/polishing/consensus.py /tmp/flye-consensus.py
 
 # The container2wasm guest exposes roughly 1 GiB of usable RAM to Flye.
 # Upstream consensus sorting requests 1 GiB per worker with four workers, which
@@ -33,6 +37,8 @@ RUN tar -xzf /tmp/flye-source.tar.gz -C /opt/flye-src \
     && install -d flye/config/bin_cfg \
     && cp -a /tmp/flye-bin-cfg/. flye/config/bin_cfg/ \
     && rm -rf /tmp/flye-bin-cfg \
+    && install -m 0644 /tmp/flye-consensus.py flye/polishing/consensus.py \
+    && rm /tmp/flye-consensus.py \
     && test -s flye/config/bin_cfg/asm_defaults.cfg \
     && test -s flye/config/bin_cfg/asm_corrected_reads.cfg \
     && for include in $(awk '$1 == "%include" {print $2}' flye/config/bin_cfg/*.cfg | sort -u); do \
@@ -40,6 +46,8 @@ RUN tar -xzf /tmp/flye-source.tar.gz -C /opt/flye-src \
     done \
     && sed -i 's/\r$//' bin/flye \
     && find flye -type f -name '*.py' -exec sed -i 's/\r$//' {} + \
+    && grep -q '^    if num_proc == 1:$' flye/polishing/consensus.py \
+    && grep -q 'SynchronizedSamReader(alignment_path, contigs_fasta, None' flye/polishing/consensus.py \
     && sed -i 's/^    SORT_THREADS = "4"$/    SORT_THREADS = "1"/' flye/polishing/alignment.py \
     && sed -i 's/^    SORT_MEM = "4G" if os.path.getsize(reference_file) > 100 \* 1024 \* 1024 else "1G"$/    SORT_MEM = "128M"/' flye/polishing/alignment.py \
     && grep -q '^    SORT_THREADS = "1"$' flye/polishing/alignment.py \
