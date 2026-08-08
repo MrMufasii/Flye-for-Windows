@@ -36,6 +36,14 @@ RUN tar -xzf /tmp/flye-source.tar.gz -C /opt/flye-src \
     done \
     && sed -i 's/\r$//' bin/flye \
     && find flye -type f -name '*.py' -exec sed -i 's/\r$//' {} + \
+    # The container2wasm guest exposes roughly 1 GiB of usable RAM to Flye. \
+    # Upstream consensus sorting requests 1 GiB per worker with four workers, \
+    # which cannot fit alongside minimap2 and the guest OS. Keep this image's \
+    # sort deterministic and bounded for the WASM verification workload. \
+    && sed -i 's/^    SORT_THREADS = "4"$/    SORT_THREADS = "1"/' flye/polishing/alignment.py \
+    && sed -i 's/^    SORT_MEM = "4G" if os.path.getsize(reference_file) > 100 \* 1024 \* 1024 else "1G"$/    SORT_MEM = "128M"/' flye/polishing/alignment.py \
+    && grep -q '^    SORT_THREADS = "1"$' flye/polishing/alignment.py \
+    && grep -q '^    SORT_MEM = "128M"$' flye/polishing/alignment.py \
     && mkdir -p bin \
     && install -m 0755 \
         /usr/share/autoconf/build-aux/config.guess \
