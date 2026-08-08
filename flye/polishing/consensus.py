@@ -15,6 +15,10 @@ from flye.six import itervalues
 
 import multiprocessing
 import traceback
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 
 from flye.polishing.alignment import shift_gaps, get_uniform_alignments
 from flye.utils.sam_parser import SynchronizedSamReader, SynchonizedChunkManager
@@ -68,18 +72,32 @@ def get_consensus(alignment_path, contigs_path, contigs_info, num_proc,
 
     CHUNK_SIZE = 1000000
     contigs_fasta = fp.read_sequence_dict(contigs_path)
-    mp_manager = multiprocessing.Manager()
-    aln_reader = SynchronizedSamReader(alignment_path, contigs_fasta, mp_manager,
-                                       max_coverage=cfg.vals["max_read_coverage"],
-                                       use_secondary=True)
-    chunk_feeder = SynchonizedChunkManager(contigs_fasta, mp_manager, CHUNK_SIZE)
 
-    #manager = multiprocessing.Manager()
-    results_queue = mp_manager.Queue()
-    error_queue = mp_manager.Queue()
+    # Avoid multiprocessing.Manager when only one worker is requested. Besides
+    # being unnecessary overhead, Manager creates a Unix-domain listener under
+    # TMPDIR; container2wasm's mounted filesystem does not support that socket
+    # operation and returns EPROTO. The sequential path keeps exactly the same
+    # reader/chunk/worker logic while using in-process queues and state.
+    if num_proc == 1:
+        aln_reader = SynchronizedSamReader(alignment_path, contigs_fasta, None,
+                                           max_coverage=cfg.vals["max_read_coverage"],
+                                           use_secondary=True)
+        chunk_feeder = SynchonizedChunkManager(contigs_fasta, None, CHUNK_SIZE)
+        results_queue = queue.Queue()
+        error_queue = queue.Queue()
+        _thread_worker(aln_reader, chunk_feeder, platform,
+                       results_queue, error_queue)
+    else:
+        mp_manager = multiprocessing.Manager()
+        aln_reader = SynchronizedSamReader(alignment_path, contigs_fasta, mp_manager,
+                                           max_coverage=cfg.vals["max_read_coverage"],
+                                           use_secondary=True)
+        chunk_feeder = SynchonizedChunkManager(contigs_fasta, mp_manager, CHUNK_SIZE)
+        results_queue = mp_manager.Queue()
+        error_queue = mp_manager.Queue()
 
-    process_in_parallel(_thread_worker, (aln_reader, chunk_feeder,
-                            platform, results_queue, error_queue), num_proc)
+        process_in_parallel(_thread_worker, (aln_reader, chunk_feeder,
+                                platform, results_queue, error_queue), num_proc)
 
     if not error_queue.empty():
         raise error_queue.get()
