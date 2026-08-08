@@ -45,6 +45,11 @@ for output in assembly.fasta assembly_graph.gfa assembly_info.txt; do
   fi
 done
 if (( missing != 0 )); then
+  while IFS= read -r stderr_file; do
+    printf '\n===== WASM alignment stderr: %s =====\n' "${stderr_file#"$ROOT/wasm/"}" >&2
+    cat "$stderr_file" >&2
+  done < <(find "$ROOT/wasm" -type f -name minimap.stderr -print | sort)
+
   if [[ -f "$ROOT/wasm/flye.log" ]]; then
     printf '\n===== WASM Flye log (last 200 lines) =====\n' >&2
     tail -n 200 "$ROOT/wasm/flye.log" >&2
